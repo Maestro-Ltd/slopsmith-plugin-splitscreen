@@ -129,6 +129,7 @@
                 arrangement:   parseInt(params.get('arrangement'), 10) || 0,
                 mode:          params.get('mode') || '2d',
                 inverted:      params.get('inverted') === '1',
+                lefty:         params.get('lefty') === '1',
                 mastery:       parseFloat(params.get('mastery')),
                 // User-driven per-panel toggles forwarded by the spawning
                 // window so the popup mirrors the source panel's state.
@@ -243,6 +244,7 @@
                 : p.lyricsMode ? LYRICS_VALUE : (arrangements[p.arrIndex]?.name || ''),
             lyrics: !!p.lyricsOverlayOn,
             inverted: p.hw.getInverted(),
+            lefty: typeof p.hw.getLefty === 'function' ? p.hw.getLefty() : false,
             detectChannel: p.detectChannel || 'mono',
             barHidden: p.bar.style.display === 'none',
             mastery: p.hw.getMastery(),
@@ -604,6 +606,11 @@
         updateInvertStyle(false);
         bar.appendChild(invertBtn);
 
+        const leftyBtn = makeToggleBtn('Lefty');
+        const updateLeftyStyle = (on) => styleToggle(leftyBtn, on, '#166534');
+        updateLeftyStyle(false);
+        bar.appendChild(leftyBtn);
+
         const lyricsBtn = makeToggleBtn('Lyrics');
         const updateLyricsStyle = (on) => styleToggle(lyricsBtn, on, '#065f46');
         bar.appendChild(lyricsBtn);
@@ -732,6 +739,7 @@
         return {
             panelDiv, canvas, bar, barToggleBtn, select, arrName,
             invertBtn, updateInvertStyle,
+            leftyBtn, updateLeftyStyle,
             lyricsBtn, updateLyricsStyle,
             tabBtn, updateTabStyle,
             detectBtn, updateDetectStyle,
@@ -772,6 +780,7 @@
     function recreatePanelHighway(panel, opts) {
         const old = panel.hw;
         const inverted = old.getInverted();
+        const lefty = typeof old.getLefty === 'function' ? old.getLefty() : false;
         const lyricsVisible = typeof old.getLyricsVisible === 'function' ? old.getLyricsVisible() : true;
         const mastery = old.getMastery();
         old.stop();
@@ -811,6 +820,7 @@
         }
         hw.init(panel.canvas);
         hw.setInverted(inverted);
+        if (typeof hw.setLefty === 'function') hw.setLefty(lefty);
         if (typeof hw.setLyricsVisible === 'function') hw.setLyricsVisible(lyricsVisible);
         hw.setMastery(mastery);
         hw.resize();
@@ -962,6 +972,7 @@
 
         // Hide highway-specific buttons and mastery slider
         panel.invertBtn.style.display = 'none';
+        panel.leftyBtn.style.display = 'none';
         panel.tabBtn.style.display = 'none';
         panel.masteryHeading.style.display = 'none';
         panel.masterySlider.style.display = 'none';
@@ -989,6 +1000,7 @@
 
         panel.canvas.style.display = '';
         panel.invertBtn.style.display = '';
+        panel.leftyBtn.style.display = '';
         panel.tabBtn.style.display = '';
         panel.masteryHeading.style.display = '';
         panel.masterySlider.style.display = '';
@@ -1014,6 +1026,7 @@
         panel.canvas.style.display = 'none';
 
         panel.invertBtn.style.display = 'none';
+        panel.leftyBtn.style.display = 'none';
         panel.tabBtn.style.display = 'none';
         panel.masteryHeading.style.display = 'none';
         panel.masterySlider.style.display = 'none';
@@ -1056,6 +1069,7 @@
 
         panel.canvas.style.display = '';
         panel.invertBtn.style.display = '';
+        panel.leftyBtn.style.display = '';
         panel.tabBtn.style.display = '';
         panel.masteryHeading.style.display = '';
         panel.masterySlider.style.display = '';
@@ -1115,6 +1129,14 @@
             panel.updateInvertStyle(on);
             savePanelPrefs();
         };
+        panel.updateLeftyStyle(typeof panel.hw.getLefty === 'function' ? panel.hw.getLefty() : false);
+        panel.leftyBtn.onclick = () => {
+            if (typeof panel.hw.getLefty !== 'function' || typeof panel.hw.setLefty !== 'function') return;
+            const on = !panel.hw.getLefty();
+            panel.hw.setLefty(on);
+            panel.updateLeftyStyle(on);
+            savePanelPrefs();
+        };
 
         const vp = vizPlugins.find(p => p.id === pluginId);
         panel.select.value = VIZ_PREFIX + ':' + pluginId + ':' + panel.arrIndex;
@@ -1144,6 +1166,14 @@
             const on = !panel.hw.getInverted();
             panel.hw.setInverted(on);
             panel.updateInvertStyle(on);
+            savePanelPrefs();
+        };
+        panel.updateLeftyStyle(typeof panel.hw.getLefty === 'function' ? panel.hw.getLefty() : false);
+        panel.leftyBtn.onclick = () => {
+            if (typeof panel.hw.getLefty !== 'function' || typeof panel.hw.setLefty !== 'function') return;
+            const on = !panel.hw.getLefty();
+            panel.hw.setLefty(on);
+            panel.updateLeftyStyle(on);
             savePanelPrefs();
         };
 
@@ -1201,8 +1231,9 @@
         panel.hw.init(panel.canvas);
 
         // Apply saved preferences
-        if (prefs && !isLyricsMode && !isJumpingTabMode && !isVizMode) {
+        if (prefs && !isLyricsMode && !isJumpingTabMode) {
             if (prefs.inverted !== undefined) panel.hw.setInverted(prefs.inverted);
+            if (prefs.lefty !== undefined && typeof panel.hw.setLefty === 'function') panel.hw.setLefty(prefs.lefty);
             if (prefs.lyrics !== undefined && typeof panel.hw.setLyricsVisible === 'function') {
                 panel.hw.setLyricsVisible(prefs.lyrics);
             }
@@ -1304,6 +1335,14 @@
                         panel.updateInvertStyle(on);
                         savePanelPrefs();
                     };
+                    panel.updateLeftyStyle(typeof panel.hw.getLefty === 'function' ? panel.hw.getLefty() : false);
+                    panel.leftyBtn.onclick = () => {
+                        if (typeof panel.hw.getLefty !== 'function' || typeof panel.hw.setLefty !== 'function') return;
+                        const on = !panel.hw.getLefty();
+                        panel.hw.setLefty(on);
+                        panel.updateLeftyStyle(on);
+                        savePanelPrefs();
+                    };
                     savePanelPrefs();
                 } else {
                     enterVizMode(panel, pluginId);
@@ -1331,6 +1370,14 @@
             const on = !panel.hw.getInverted();
             panel.hw.setInverted(on);
             panel.updateInvertStyle(on);
+            savePanelPrefs();
+        };
+        panel.updateLeftyStyle(typeof panel.hw.getLefty === 'function' ? panel.hw.getLefty() : false);
+        panel.leftyBtn.onclick = () => {
+            if (typeof panel.hw.getLefty !== 'function' || typeof panel.hw.setLefty !== 'function') return;
+            const on = !panel.hw.getLefty();
+            panel.hw.setLefty(on);
+            panel.updateLeftyStyle(on);
             savePanelPrefs();
         };
 
@@ -1593,6 +1640,7 @@
             arrangement: panel.arrIndex || 0,
             mode:        _captureMode(panel),
             inverted:    panel.hw.getInverted() ? 1 : 0,
+            lefty:       typeof panel.hw.getLefty === 'function' && panel.hw.getLefty() ? 1 : 0,
             mastery:     panel.hw.getMastery(),
             // User-driven per-panel toggles that should survive a pop-out /
             // dock round-trip. Without these, docking always forces lyrics on
@@ -1633,6 +1681,7 @@
         sp.set('arrangement', String(cfg.arrangement));
         sp.set('mode', cfg.mode);
         sp.set('inverted', String(cfg.inverted));
+        sp.set('lefty', String(cfg.lefty || 0));
         sp.set('lyrics', cfg.lyrics ? '1' : '0');
         sp.set('barHidden', cfg.barHidden ? '1' : '0');
         sp.set('detectChannel', cfg.detectChannel || 'mono');
@@ -1665,6 +1714,7 @@
                 : p.lyricsMode ? LYRICS_VALUE : (arrangements[p.arrIndex]?.name || ''),
             lyrics: !!p.lyricsOverlayOn,
             inverted: p.hw.getInverted(),
+            lefty: typeof p.hw.getLefty === 'function' ? p.hw.getLefty() : false,
             detectChannel: p.detectChannel || 'mono',
             barHidden: p.bar.style.display === 'none',
             mastery: p.hw.getMastery(),
@@ -1735,6 +1785,7 @@
                 : p.lyricsMode ? LYRICS_VALUE : (arrangements[p.arrIndex]?.name || ''),
             lyrics: !!p.lyricsOverlayOn,
             inverted: p.hw.getInverted(),
+            lefty: typeof p.hw.getLefty === 'function' ? p.hw.getLefty() : false,
             detectChannel: p.detectChannel || 'mono',
             barHidden: p.bar.style.display === 'none',
             mastery: p.hw.getMastery(),
@@ -2031,6 +2082,7 @@
             // finalState) instead of forcing fresh defaults.
             lyrics: !!merged.lyrics,
             inverted: !!merged.inverted,
+            lefty: !!merged.lefty,
             detectChannel: merged.detectChannel || 'mono',
             barHidden: !!merged.barHidden,
             mastery: Number.isFinite(merged.mastery) ? merged.mastery : 1,
@@ -2511,6 +2563,7 @@
             // sane defaults.
             lyrics: !!cfg.lyrics,
             inverted: !!cfg.inverted,
+            lefty: !!cfg.lefty,
             detectChannel: cfg.detectChannel || 'mono',
             barHidden: !!cfg.barHidden,
             mastery: Number.isFinite(cfg.mastery) ? cfg.mastery : 1,
@@ -2600,6 +2653,7 @@
                 arrangement: defaultArrs[i] || 0,
                 mode: '2d',
                 inverted: 0,
+                lefty: 0,
                 mastery: 1,
             };
             const arrIdx = (cfg.arrangement >= 0 && cfg.arrangement < arrangements.length)
@@ -2690,7 +2744,7 @@
         if (newLayoutKey === _followerLayoutKey && panels.length === FOLLOWER_LAYOUT_PANELS[newLayoutKey]) return;
 
         // Capture current panel configs (in slot order) so the rebuilt
-        // grid keeps existing arrangement / mode / inverted / mastery.
+        // grid keeps existing arrangement / mode / inverted / lefty / mastery.
         const cfgs = panels.map(p => _captureFollowerConfig(p));
 
         teardownPanels();
