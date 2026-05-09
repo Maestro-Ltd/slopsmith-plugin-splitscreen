@@ -308,7 +308,7 @@
                 : p.lyricsMode ? LYRICS_VALUE : (arrangements[p.arrIndex]?.name || ''),
             lyrics: !!p.lyricsOverlayOn,
             inverted: p.hw.getInverted(),
-            lefty: typeof p.hw.getLefty === 'function' ? p.hw.getLefty() : false,
+            lefty: p.hw.getLefty(),
             detectChannel: p.detectChannel || 'mono',
             barHidden: p.bar.style.display === 'none',
             mastery: p.hw.getMastery(),
@@ -842,7 +842,7 @@
     function recreatePanelHighway(panel, opts) {
         const old = panel.hw;
         const inverted = old.getInverted();
-        const lefty = typeof old.getLefty === 'function' ? old.getLefty() : false;
+        const lefty = old.getLefty();
         const lyricsVisible = typeof old.getLyricsVisible === 'function' ? old.getLyricsVisible() : true;
         const mastery = old.getMastery();
         old.stop();
@@ -882,7 +882,7 @@
         }
         hw.init(panel.canvas);
         hw.setInverted(inverted);
-        if (typeof hw.setLefty === 'function') hw.setLefty(lefty);
+        hw.setLefty(lefty);
         if (typeof hw.setLyricsVisible === 'function') hw.setLyricsVisible(lyricsVisible);
         hw.setMastery(mastery);
         hw.resize();
@@ -1249,9 +1249,8 @@
             panel.updateInvertStyle(on);
             savePanelPrefs();
         };
-        panel.updateLeftyStyle(typeof panel.hw.getLefty === 'function' ? panel.hw.getLefty() : false);
+        panel.updateLeftyStyle(panel.hw.getLefty());
         panel.leftyBtn.onclick = () => {
-            if (typeof panel.hw.getLefty !== 'function' || typeof panel.hw.setLefty !== 'function') return;
             const on = !panel.hw.getLefty();
             panel.hw.setLefty(on);
             panel.updateLeftyStyle(on);
@@ -1290,9 +1289,8 @@
             panel.updateInvertStyle(on);
             savePanelPrefs();
         };
-        panel.updateLeftyStyle(typeof panel.hw.getLefty === 'function' ? panel.hw.getLefty() : false);
+        panel.updateLeftyStyle(panel.hw.getLefty());
         panel.leftyBtn.onclick = () => {
-            if (typeof panel.hw.getLefty !== 'function' || typeof panel.hw.setLefty !== 'function') return;
             const on = !panel.hw.getLefty();
             panel.hw.setLefty(on);
             panel.updateLeftyStyle(on);
@@ -1355,7 +1353,7 @@
         // Apply saved preferences
         if (prefs && !isLyricsMode && !isJumpingTabMode) {
             if (prefs.inverted !== undefined) panel.hw.setInverted(prefs.inverted);
-            if (prefs.lefty !== undefined && typeof panel.hw.setLefty === 'function') panel.hw.setLefty(prefs.lefty);
+            if (prefs.lefty !== undefined) panel.hw.setLefty(prefs.lefty);
             if (prefs.lyrics !== undefined && typeof panel.hw.setLyricsVisible === 'function') {
                 panel.hw.setLyricsVisible(prefs.lyrics);
             }
@@ -1447,9 +1445,8 @@
                         panel.updateInvertStyle(on);
                         savePanelPrefs();
                     };
-                    panel.updateLeftyStyle(typeof panel.hw.getLefty === 'function' ? panel.hw.getLefty() : false);
+                    panel.updateLeftyStyle(panel.hw.getLefty());
                     panel.leftyBtn.onclick = () => {
-                        if (typeof panel.hw.getLefty !== 'function' || typeof panel.hw.setLefty !== 'function') return;
                         const on = !panel.hw.getLefty();
                         panel.hw.setLefty(on);
                         panel.updateLeftyStyle(on);
@@ -1485,9 +1482,8 @@
             panel.updateInvertStyle(on);
             savePanelPrefs();
         };
-        panel.updateLeftyStyle(typeof panel.hw.getLefty === 'function' ? panel.hw.getLefty() : false);
+        panel.updateLeftyStyle(panel.hw.getLefty());
         panel.leftyBtn.onclick = () => {
-            if (typeof panel.hw.getLefty !== 'function' || typeof panel.hw.setLefty !== 'function') return;
             const on = !panel.hw.getLefty();
             panel.hw.setLefty(on);
             panel.updateLeftyStyle(on);
@@ -1753,7 +1749,7 @@
             arrangement: panel.arrIndex || 0,
             mode:        _captureMode(panel),
             inverted:    panel.hw.getInverted() ? 1 : 0,
-            lefty:       typeof panel.hw.getLefty === 'function' && panel.hw.getLefty() ? 1 : 0,
+            lefty:       panel.hw.getLefty() ? 1 : 0,
             mastery:     panel.hw.getMastery(),
             // User-driven per-panel toggles that should survive a pop-out /
             // dock round-trip. Without these, docking always forces lyrics on
@@ -1827,7 +1823,7 @@
                 : p.lyricsMode ? LYRICS_VALUE : (arrangements[p.arrIndex]?.name || ''),
             lyrics: !!p.lyricsOverlayOn,
             inverted: p.hw.getInverted(),
-            lefty: typeof p.hw.getLefty === 'function' ? p.hw.getLefty() : false,
+            lefty: p.hw.getLefty(),
             detectChannel: p.detectChannel || 'mono',
             barHidden: p.bar.style.display === 'none',
             mastery: p.hw.getMastery(),
@@ -1898,7 +1894,7 @@
                 : p.lyricsMode ? LYRICS_VALUE : (arrangements[p.arrIndex]?.name || ''),
             lyrics: !!p.lyricsOverlayOn,
             inverted: p.hw.getInverted(),
-            lefty: typeof p.hw.getLefty === 'function' ? p.hw.getLefty() : false,
+            lefty: p.hw.getLefty(),
             detectChannel: p.detectChannel || 'mono',
             barHidden: p.bar.style.display === 'none',
             mastery: p.hw.getMastery(),
