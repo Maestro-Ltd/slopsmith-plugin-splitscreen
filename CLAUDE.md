@@ -73,6 +73,7 @@ screen.js
   arrName: string,       // arrangement name, or LYRICS_VALUE / JUMPING_TAB_VALUE:arrName / VIZ_PREFIX:pluginId:arrName
   lyrics: bool,          // per-panel lyrics overlay toggle (top-anchored translucent band; works in any renderer)
   inverted: bool,        // panel invert state
+  lefty: bool,           // panel left-handed-mode state (hw.getLefty/setLefty)
   detectChannel: string, // 'mono' | 'left' | 'right'
   barHidden: bool,       // whether the panel's mini control bar is hidden
   mastery: number,       // master-difficulty fraction 0..1 (0=easy, 1=full chart)
@@ -98,6 +99,8 @@ Each entry in `panels[]` is built with `Object.assign({ hw, arrIndex: 0 }, parts
   arrName,           // <span> showing current arrangement name
   invertBtn,         // Invert toggle button
   updateInvertStyle, // fn(bool) — updates invertBtn appearance
+  leftyBtn,          // Lefty (left-handed mode) toggle button
+  updateLeftyStyle,  // fn(bool) — updates leftyBtn appearance
   lyricsBtn,         // Lyrics toggle button
   updateLyricsStyle, // fn(bool)
   tabBtn,            // Tab toggle button
