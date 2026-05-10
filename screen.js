@@ -137,7 +137,9 @@
     //
     //  popups: in the main window, tracks every popup we've spawned so we
     //  can re-instate the panel when the popup posts a `docked` message.
-    //  Keyed by popupId. { panelIdx, originalConfig }.
+    //  Keyed by popupId. Entry: { popup, originalConfig } — `popup` is the
+    //  window handle (so the broadcaster can reap a popup that died without
+    //  firing beforeunload); `originalConfig` is the panel state at pop-out time.
     //
     //  FOLLOWER: parsed once on script load. Truthy in the popup window
     //  only. Carries the panel config received from the opener.
@@ -299,8 +301,15 @@
     }
 
     // ── Panel preference persistence ──
-    function savePanelPrefs() {
-        const prefs = panels.map(p => ({
+    // Snapshot a live panel into the splitscreenPanelPrefs entry shape. Mode is
+    // encoded into arrName (LYRICS_VALUE / JUMPING_TAB_VALUE:<arr> /
+    // VIZ_PREFIX:<id>:<arr> / plain arrangement name). Single source of truth
+    // for the encoding — used by savePanelPrefs (persist to localStorage),
+    // captureCurrentPrefs (in-memory, for rebuildLayout / _redockPanel) and
+    // popOutPanel (snapshot of the panels left behind). Keep all three on this
+    // helper so a new per-panel field is added once, not three times.
+    function panelToPrefs(p) {
+        return {
             arrName: p.jumpingTabMode
                 ? JUMPING_TAB_VALUE + ':' + (arrangements[p.arrIndex]?.name || '')
                 : p.vizMode
@@ -312,8 +321,10 @@
             detectChannel: p.detectChannel || 'mono',
             barHidden: p.bar.style.display === 'none',
             mastery: p.hw.getMastery(),
-        }));
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(prefs));
+        };
+    }
+    function savePanelPrefs() {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(panels.map(panelToPrefs)));
     }
 
     function loadPanelPrefs() {
@@ -1801,7 +1812,13 @@
             alert('Pop-out blocked by browser. Allow popups for this origin and try again.');
             return;
         }
-        popups.set(popupId, { panelIdx: idx, originalConfig: cfg });
+        // Track the popup (incl. its window handle so the broadcaster can reap
+        // it if it dies without firing beforeunload).
+        popups.set(popupId, { popup, originalConfig: cfg });
+        // Force the next broadcaster tick to re-send the current time even if
+        // the main audio is paused (== unchanged), so this freshly-opened
+        // popup gets a playhead value instead of sitting at 0.
+        _lastBroadcastTime = null;
 
         // Open the channel in the main window so we can broadcast time and
         // listen for the popup's docked / closed messages.
@@ -1815,19 +1832,7 @@
         // default slot in the grid.
         const wasActive = active;
         const remaining = panels.filter(p => p !== panel);
-        const savedPrefs = remaining.map(p => ({
-            arrName: p.jumpingTabMode
-                ? JUMPING_TAB_VALUE + ':' + (arrangements[p.arrIndex]?.name || '')
-                : p.vizMode
-                ? VIZ_PREFIX + ':' + p.vizMode + ':' + (arrangements[p.arrIndex]?.name || '')
-                : p.lyricsMode ? LYRICS_VALUE : (arrangements[p.arrIndex]?.name || ''),
-            lyrics: !!p.lyricsOverlayOn,
-            inverted: p.hw.getInverted(),
-            lefty: p.hw.getLefty(),
-            detectChannel: p.detectChannel || 'mono',
-            barHidden: p.bar.style.display === 'none',
-            mastery: p.hw.getMastery(),
-        }));
+        const savedPrefs = remaining.map(panelToPrefs);
 
         if (wasActive && savedPrefs.length === 0) {
             // Single-panel split (rare) — pop out leaves nothing.
@@ -1886,19 +1891,7 @@
     }
 
     function captureCurrentPrefs() {
-        return panels.map(p => ({
-            arrName: p.jumpingTabMode
-                ? JUMPING_TAB_VALUE + ':' + (arrangements[p.arrIndex]?.name || '')
-                : p.vizMode
-                ? VIZ_PREFIX + ':' + p.vizMode + ':' + (arrangements[p.arrIndex]?.name || '')
-                : p.lyricsMode ? LYRICS_VALUE : (arrangements[p.arrIndex]?.name || ''),
-            lyrics: !!p.lyricsOverlayOn,
-            inverted: p.hw.getInverted(),
-            lefty: p.hw.getLefty(),
-            detectChannel: p.detectChannel || 'mono',
-            barHidden: p.bar.style.display === 'none',
-            mastery: p.hw.getMastery(),
-        }));
+        return panels.map(panelToPrefs);
     }
 
     async function startSplitScreen(existingArrangements, savedPrefs) {
@@ -2161,14 +2154,36 @@
     // receives time updates. Started when the first popup is registered;
     // stopped when the last popup is dropped.
     let _popupBroadcastInterval = null;
+    // Last value we actually broadcast. Used to skip redundant messages while
+    // the main audio is paused. Reset to null (force a re-broadcast next tick)
+    // when a new popup registers and when the broadcaster stops — see
+    // popOutPanel / _stopPopupBroadcaster.
+    let _lastBroadcastTime = null;
     function _startPopupBroadcaster() {
         if (_popupBroadcastInterval) return;
         const audio = document.getElementById('audio');
         const ch = _ssChannel();
         if (!audio || !ch) return;
         _popupBroadcastInterval = setInterval(() => {
+            // Reap popups that vanished without firing beforeunload (crash /
+            // forced close / OS kill): otherwise their slot lingers and we'd
+            // keep broadcasting to nobody at 60 Hz indefinitely. popup.closed
+            // is a cheap same-origin boolean.
+            for (const [id, e] of popups) {
+                if (e.popup && e.popup.closed) popups.delete(id);
+            }
             if (popups.size === 0) { _stopPopupBroadcaster(); return; }
-            ch.postMessage({ type: 'time', t: audio.currentTime });
+            // Only broadcast when the playhead actually moved — skips ~60
+            // redundant structured-clone messages/sec (and the follower's
+            // per-panel setTime + toast checks) while the main audio is paused.
+            // During playback currentTime advances every frame so this is a
+            // no-op there. NaN can appear briefly during a src swap; never
+            // broadcast that.
+            const t = audio.currentTime;
+            if (Number.isFinite(t) && t !== _lastBroadcastTime) {
+                _lastBroadcastTime = t;
+                ch.postMessage({ type: 'time', t });
+            }
         }, 1000 / 60);
     }
     function _stopPopupBroadcaster() {
@@ -2176,6 +2191,7 @@
             clearInterval(_popupBroadcastInterval);
             _popupBroadcastInterval = null;
         }
+        _lastBroadcastTime = null;
     }
 
     // ══════════════════════════════════════════════════════════════════════
@@ -2632,11 +2648,15 @@
             console.error('[splitscreen-follower] playSong failed:', e);
             return;
         }
-        // Re-assert mute (playSong resets audio.src; some browsers unmute
-        // on src change). Also re-install the currentTime shim — the
-        // <audio> element is the same instance so the property override
-        // should still be in place, but cheap to re-confirm.
+        // Re-acquire the <audio> element, re-assert mute (playSong resets
+        // audio.src; some browsers unmute on src change), and re-install the
+        // currentTime shim. The element is normally the same instance so the
+        // Object.defineProperty override persists, but re-querying + re-defining
+        // (configurable:true → harmless redefine) keeps the shim correct even
+        // if a future refactor swaps the element out.
+        _followerAudio = document.getElementById('audio');
         if (_followerAudio) { _followerAudio.muted = true; _followerAudio.volume = 0; }
+        _installFollowerAudioShim(_followerAudio);
         await waitForHighwayReady();
         // Ensure viz plugin metadata is ready before buildFollowerLayout calls
         // populateSelect() — same guarantee startSplitScreen gives main panels.
