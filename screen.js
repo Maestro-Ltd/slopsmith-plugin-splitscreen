@@ -1871,11 +1871,13 @@
         // Some viz renderers (3D Highway) don't draw on #highway — they mount an
         // overlay <div class="h3d-wrap"> as a SIBLING of #highway and render a
         // WebGL canvas inside it, with its own rAF loop. display:none on the
-        // canvas alone leaves that overlay rendering full-screen behind
-        // #splitscreen-wrap (z-index:2 vs 3), bleeding through the panels'
-        // translucent bars. Hide every such sibling and restore on stop.
-        // Restore-first so a rebuild (teardown + restart, which leaves the
-        // overlays hidden) doesn't capture 'none' as their pre-split display.
+        // canvas alone leaves that overlay rendering full-screen at z-index 2,
+        // behind #splitscreen-wrap (z-index 3) but visible through any panel
+        // gap (and, before the opaque-bar change above, through the bars).
+        // Hide every such sibling; restore on stop and on start-failure
+        // rollback. Restore-first so a rebuild (teardown + restart, which
+        // leaves the overlays hidden) doesn't capture 'none' as their
+        // pre-split display.
         restoreHiddenHighwaySiblings();
         if (defaultCanvas && defaultCanvas.parentNode) {
             defaultCanvas.parentNode.querySelectorAll(':scope > .h3d-wrap').forEach((el) => {
