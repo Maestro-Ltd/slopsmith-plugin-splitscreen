@@ -252,7 +252,7 @@ The plugin wraps `window.playSong` to:
 
 ```
 #player  (position:fixed, inset:0, z-index:100)
-  #highway              — default highway canvas, hidden when splitscreen active
+  #highway              — default highway canvas, hidden (display:none) when splitscreen active
   #splitscreen-wrap     — position:absolute, top:0, left:0, right:0, bottom:{controlsH}px, z-index:3
     .splitscreen-panel  — each panel, position:relative, overflow:hidden
       <canvas>          — the highway canvas
@@ -265,6 +265,16 @@ The plugin wraps `window.playSong` to:
   #player-controls      — position:relative, z-index:10, margin-top:auto (while splitscreen active)
   [floatBtn]            — position:absolute, bottom:8px, right:8px, z-index:20 (when bar hidden)
 ```
+
+### Hiding `#highway` and the `highway:visibility` contract
+
+`startSplitScreen()` hides `#highway` with `display:none`; `stopSplitScreen()` (and the start-failure rollback) restores it. That single hide is all splitscreen does — core does the rest (slopsmith#246):
+
+- Core's rAF reads `canvas.offsetParent === null` per tick. While the canvas is hidden it skips the highway's `renderer.draw()` (and the default 2D draw), so the hidden main highway isn't burning frames behind the panels.
+- Core emits `highway:visibility` (`{ visible, canvas }` on `event.detail`) on transitions. Viz renderers that mount **sibling DOM** — e.g. 3D Highway's `.h3d-wrap` overlay, a sibling of `#highway` that `display:none` on the canvas doesn't cover — subscribe to that event (filtered by canvas identity, so splitscreen's per-panel instances don't toggle each other) and hide/show their own overlays. Splitscreen used to hand-hunt `:scope > .h3d-wrap` siblings of `#highway` and toggle them itself; that's gone — the viz owns its overlay's visibility now.
+- Per-panel viz overlays don't need special handling: exiting viz mode on a panel (`exitVizMode` → `recreatePanelHighway`) discards the panel highway, which calls the renderer's `destroy()` and removes its overlay. A panel canvas hidden for lyrics/jumping-tab mode has no live viz renderer to leave anything painting.
+
+Wants a core with the `highway:visibility` API (~slopsmith 0.2.7.1+) for the rAF skip and the overlay auto-hide — not a hard dependency. On an older core the plugin still runs; `display:none` on `#highway` just doesn't pause the hidden highway's draw loop, and a sibling-mounting viz overlay (3D Highway) may bleed through the panels. Update both together to fix that.
 
 ## External plugin integration points
 

@@ -34,10 +34,6 @@
     let vizPlugins   = []; // {id, name, ...} — type=visualization plugins from /api/plugins
     let _starting    = false; // re-entrancy guard for startSplitScreen
     let _pendingRebuild = false; // rebuildLayout requested while a start is in flight
-    // Viz overlays (e.g. 3D Highway's .h3d-wrap) that live as siblings of
-    // #highway and aren't hidden by display:none on the canvas alone. Hidden
-    // while split is active; entries are [el, prevInlineDisplay].
-    let _hiddenHighwaySiblings = [];
 
     // Core swaps a panel's <canvas> element when a renderer needs a different
     // context type than the one the canvas is bound to (browsers lock a canvas
@@ -1992,26 +1988,18 @@
             if (panelPrefs?.barHidden) togglePanelBar(panel);
         }
 
-        // Hide default highway canvas, ensure controls stay on top and at bottom
+        // Hide default highway canvas, ensure controls stay on top and at bottom.
+        // Core detects the hide via canvas.offsetParent === null (slopsmith#246):
+        // it pauses the main highway's rAF draw AND emits `highway:visibility`
+        // on window.slopsmith. Viz renderers that mount sibling DOM — e.g. 3D
+        // Highway's .h3d-wrap overlay, a sibling of #highway that display:none
+        // on the canvas alone doesn't cover — subscribe to that event and hide
+        // their own overlays. Splitscreen no longer reaches into other plugins'
+        // DOM to do this; it just hides #highway and lets the contract handle
+        // the rest (on stop, restoring #highway re-emits visible → overlays
+        // re-show themselves).
         const defaultCanvas = document.getElementById('highway');
         if (defaultCanvas) defaultCanvas.style.display = 'none';
-        // Some viz renderers (3D Highway) don't draw on #highway — they mount an
-        // overlay <div class="h3d-wrap"> as a SIBLING of #highway and render a
-        // WebGL canvas inside it, with its own rAF loop. display:none on the
-        // canvas alone leaves that overlay rendering full-screen at z-index 2,
-        // behind #splitscreen-wrap (z-index 3) but visible through any panel
-        // gap (and, before the opaque-bar change above, through the bars).
-        // Hide every such sibling; restore on stop and on start-failure
-        // rollback. Restore-first so a rebuild (teardown + restart, which
-        // leaves the overlays hidden) doesn't capture 'none' as their
-        // pre-split display.
-        restoreHiddenHighwaySiblings();
-        if (defaultCanvas && defaultCanvas.parentNode) {
-            defaultCanvas.parentNode.querySelectorAll(':scope > .h3d-wrap').forEach((el) => {
-                _hiddenHighwaySiblings.push([el, el.style.display]);
-                el.style.display = 'none';
-            });
-        }
         const controls = document.getElementById('player-controls');
         if (controls) {
             controls.style.position = 'relative';  // Required for z-index to work
@@ -2050,7 +2038,6 @@
             restoreHud();
             const defaultCanvas = document.getElementById('highway');
             if (defaultCanvas) defaultCanvas.style.display = '';
-            restoreHiddenHighwaySiblings();
             const controls = document.getElementById('player-controls');
             if (controls) {
                 if (controlsHidden) controls.style.display = '';
@@ -2073,16 +2060,6 @@
         }
     }
 
-    // Restore the display of viz overlays (e.g. 3D Highway's .h3d-wrap) that
-    // startSplitScreen() hid because they're siblings of #highway and not
-    // covered by display:none on the canvas. Safe to call when nothing was hidden.
-    function restoreHiddenHighwaySiblings() {
-        for (const [el, prev] of _hiddenHighwaySiblings) {
-            if (el && el.isConnected) el.style.display = prev;
-        }
-        _hiddenHighwaySiblings = [];
-    }
-
     function stopSplitScreen() {
         savePanelPrefs();
         teardownPanels();  // flips active=false + emits focus change
@@ -2096,10 +2073,11 @@
         setRedundantControlsHidden(false);
         restoreHud();
 
-        // Restore default highway canvas, its sibling viz overlays, and controls z-index
+        // Restore default highway canvas (core re-emits `highway:visibility` →
+        // sibling-mounting viz overlays like 3D Highway's .h3d-wrap re-show
+        // themselves; see slopsmith#246) and controls z-index
         const defaultCanvas = document.getElementById('highway');
         if (defaultCanvas) defaultCanvas.style.display = '';
-        restoreHiddenHighwaySiblings();
         const controls = document.getElementById('player-controls');
         if (controls) {
             if (controlsHidden) controls.style.display = '';
