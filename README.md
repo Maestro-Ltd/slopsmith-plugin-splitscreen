@@ -26,7 +26,7 @@ git clone https://github.com/topkoa/slopsmith-plugin-splitscreen.git splitscreen
 docker compose restart
 ```
 
-**Requires** a Slopsmith core with the `highway:visibility` plugin API (~0.2.7.1+). On older cores splitscreen still works, but a visualization plugin that mounts a sibling overlay — e.g. the 3D Highway's WebGL overlay — may bleed through the panels while splitscreen is active; update the core (and the 3D Highway plugin) to fix it.
+**Compatibility** — splitscreen runs on any Slopsmith core. On cores with the `highway:visibility` plugin API (~0.2.7.1+), a visualization plugin that mounts a sibling overlay — e.g. the 3D Highway's WebGL overlay — hides itself cleanly while splitscreen is active. On older cores that overlay may bleed through the panels; update the core (and the 3D Highway plugin) to fix it.
 
 ## Usage
 
