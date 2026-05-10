@@ -237,6 +237,28 @@
         { id: 'pastel',  label: 'Pastel' },
     ];
 
+    // Per-panel viz controls surfaced in a panel's "3D ⚙" popover. Each entry:
+    //   { key, label, type:'toggle'|'range'|'select', default, min?, max?, step?, options? }
+    // `key` is the localStorage suffix the viz plugin reads per-panel. For
+    // highway_3d that's h3d_bg_panel<N>_<key>, falling back to the global
+    // h3d_bg_<key> (see the plugin's _bgReadSetting). A viz plugin can override
+    // this list at runtime by exposing `window.slopsmithViz_<id>.panelControls`
+    // (same shape) — that takes precedence so the plugin owns the up-to-date
+    // list without splitscreen needing edits when it adds options.
+    const VIZ_PANEL_CONTROLS = {
+        highway_3d: [
+            { key: 'palette',         label: 'Palette',                  type: 'select', default: 'default', options: H3D_PALETTES },
+            { key: 'cameraSmoothing', label: 'Camera smoothing (X-pan)', type: 'range',  default: 0.5, min: 0, max: 1, step: 0.05 },
+            { key: 'cameraLockLow',   label: 'Lock camera at frets 1–12',type: 'toggle', default: false },
+            { key: 'cameraLockZoom',  label: 'Locked zoom (In ↔ Out)',   type: 'range',  default: 0.5, min: 0, max: 1, step: 0.05 },
+        ],
+    };
+    function getPanelControlsFor(pluginId) {
+        const fac = window['slopsmithViz_' + pluginId];
+        if (fac && Array.isArray(fac.panelControls) && fac.panelControls.length) return fac.panelControls;
+        return VIZ_PANEL_CONTROLS[pluginId] || null;
+    }
+
     // ── Settings sync ──
     const layoutSelect = document.getElementById('splitscreen-default-layout');
     if (layoutSelect) {
@@ -648,48 +670,15 @@
         channelBtn.title = 'Audio channel: Mono / Left / Right';
         bar.appendChild(channelBtn);
 
-        const viewBtn = makeToggleBtn('CLS');
-        viewBtn.title = 'Cycle 3D view style';
-        viewBtn.style.display = 'none';
-        bar.appendChild(viewBtn);
-
-        const paletteSelect = document.createElement('select');
-        paletteSelect.title = '3D Highway palette (this panel only)';
-        paletteSelect.style.cssText =
-            'background:#1a1a2e;border:1px solid #333;border-radius:4px;' +
-            'padding:2px 4px;font-size:10px;color:#ccc;outline:none;display:none;';
-        for (const p of H3D_PALETTES) {
-            const opt = document.createElement('option');
-            opt.value = p.id;
-            opt.textContent = p.label;
-            paletteSelect.appendChild(opt);
-        }
-        bar.appendChild(paletteSelect);
-
-        // Per-panel camera-smoothing slider (3D-only). Mirrors the plugin's
-        // global slider in settings.html but writes the per-panel localStorage
-        // key so this panel can have its own feel without touching the global.
-        const camSmoothingWrap = document.createElement('span');
-        camSmoothingWrap.title = '3D camera smoothing (this panel only)';
-        camSmoothingWrap.style.cssText =
-            'display:none;align-items:center;gap:4px;white-space:nowrap;';
-        const camSmoothingHeading = document.createElement('span');
-        camSmoothingHeading.style.cssText = 'font-size:10px;color:#6b7280;';
-        camSmoothingHeading.textContent = 'Cam';
-        const camSmoothingSlider = document.createElement('input');
-        camSmoothingSlider.type = 'range';
-        camSmoothingSlider.min = '0';
-        camSmoothingSlider.max = '1';
-        camSmoothingSlider.step = '0.05';
-        camSmoothingSlider.value = '0.5';
-        camSmoothingSlider.style.cssText = 'width:70px;';
-        const camSmoothingLabel = document.createElement('span');
-        camSmoothingLabel.style.cssText = 'font-size:10px;color:#9ca3af;width:24px;text-align:right;';
-        camSmoothingLabel.textContent = '0.50';
-        camSmoothingWrap.appendChild(camSmoothingHeading);
-        camSmoothingWrap.appendChild(camSmoothingSlider);
-        camSmoothingWrap.appendChild(camSmoothingLabel);
-        bar.appendChild(camSmoothingWrap);
+        // "3D ⚙" — per-panel viz settings. Hidden unless the panel is running
+        // a viz plugin that declares panel controls (see getPanelControlsFor).
+        // Opens vizPopover (below); the controls inside are generated from the
+        // descriptor, so new per-panel options need no change here.
+        const vizSettingsBtn = makeToggleBtn('3D ⚙');
+        vizSettingsBtn.title = 'Per-panel viz settings';
+        vizSettingsBtn.style.display = 'none';
+        vizSettingsBtn.setAttribute('data-ss-viz-btn', '');
+        bar.appendChild(vizSettingsBtn);
 
         const masteryHeading = document.createElement('span');
         masteryHeading.style.cssText = 'font-size:10px;color:#6b7280;white-space:nowrap;';
@@ -733,6 +722,28 @@
 
         panelDiv.appendChild(bar);
 
+        // Per-panel viz settings popover (filled lazily by buildVizPopover).
+        // Anchored above the bar's right edge. pointer-events default so the
+        // controls inside work; the panel's overflow:hidden clips it to the
+        // panel — fine since it's small and sits at the bottom-right.
+        const vizPopover = document.createElement('div');
+        vizPopover.className = 'ss-viz-popover';
+        vizPopover.style.cssText =
+            'position:absolute;right:4px;bottom:' + ((bar.offsetHeight || 28) + 4) + 'px;z-index:9;' +
+            'display:none;background:rgba(8,8,16,0.97);border:1px solid #333;border-radius:6px;' +
+            'padding:8px 10px;max-width:260px;box-shadow:0 4px 16px rgba(0,0,0,0.5);';
+        panelDiv.appendChild(vizPopover);
+        vizSettingsBtn.onclick = (e) => {
+            e.stopPropagation();
+            const open = vizPopover.style.display === 'none';
+            _closeAllVizPopovers();
+            if (open) {
+                // Re-anchor in case the bar height changed since creation.
+                vizPopover.style.bottom = ((bar.offsetHeight || 28) + 4) + 'px';
+                vizPopover.style.display = '';
+            }
+        };
+
         const barToggleBtn = document.createElement('button');
         barToggleBtn.style.cssText =
             'position:absolute;bottom:0;right:0;z-index:8;' +
@@ -761,9 +772,8 @@
             lyricsBtn, updateLyricsStyle,
             tabBtn, updateTabStyle,
             detectBtn, updateDetectStyle,
-            channelBtn, viewBtn,
-            paletteSelect,
-            camSmoothingWrap, camSmoothingSlider, camSmoothingLabel,
+            channelBtn,
+            vizSettingsBtn, vizPopover,
             masteryHeading, masterySlider, masteryLabel,
             popOutBtn,
         };
@@ -843,79 +853,137 @@
         panel.hw = hw;
     }
 
-    // ── Per-panel 3D Highway palette ──
-    // The 3D plugin reads h3d_bg_panel<N>_palette from localStorage on every
-    // change event. Writing the per-panel key + re-firing the global setter
-    // (with the global's existing value) triggers _bgEmitChange, which causes
-    // each running 3D renderer to re-read settings — picking up the panel
-    // override we just wrote. No global state changes hands.
-    function _readPanelPalette(panelIdx) {
+    // ── Per-panel viz controls ("3D ⚙" popover) ──
+    // Per-panel values live in the viz plugin's own per-panel localStorage keys
+    // (highway_3d: h3d_bg_panel<N>_<key>, fallback global h3d_bg_<key>) — NOT in
+    // splitscreenPanelPrefs. Writing the per-panel key is enough for the 3D
+    // renderer (it re-reads all settings each frame); for instant-rebuild
+    // settings (palette) we also re-fire the plugin's global setter with its
+    // existing value so _bgEmitChange runs. No global state changes hands.
+    function _vizPanelGet(pluginId, panelIdx, ctl) {
+        let v = null;
         try {
-            return localStorage.getItem('h3d_bg_panel' + panelIdx + '_palette')
-                || localStorage.getItem('h3d_bg_palette')
-                || 'default';
-        } catch (_) {
-            return 'default';
+            v = localStorage.getItem('h3d_bg_panel' + panelIdx + '_' + ctl.key);
+            if (v == null) v = localStorage.getItem('h3d_bg_' + ctl.key);
+        } catch (_) { /* storage blocked */ }
+        if (v == null) return ctl.default;
+        if (ctl.type === 'toggle') return v === 'true' || v === '1';
+        if (ctl.type === 'range') {
+            const n = parseFloat(v);
+            if (!Number.isFinite(n)) return ctl.default;
+            return Math.max(ctl.min, Math.min(ctl.max, n));
         }
+        return v;
     }
-    function _readPanelCameraSmoothing(panelIdx) {
-        try {
-            const stored = localStorage.getItem('h3d_bg_panel' + panelIdx + '_cameraSmoothing')
-                ?? localStorage.getItem('h3d_bg_cameraSmoothing');
-            const n = stored == null ? 0.5 : parseFloat(stored);
-            return Number.isFinite(n) ? Math.max(0, Math.min(1, n)) : 0.5;
-        } catch (_) {
-            return 0.5;
+    function _vizPanelSet(pluginId, panelIdx, ctl, value) {
+        try { localStorage.setItem('h3d_bg_panel' + panelIdx + '_' + ctl.key, String(value)); } catch (_) {}
+        // Re-fire the plugin's global setter with the global's *current* value
+        // (or the descriptor default if the global was never set) — the global
+        // is unchanged, but this triggers the plugin's change event so each
+        // renderer reloads and re-reads its per-panel key. Required for
+        // rebuild-type settings (palette retints materials only on this event);
+        // for the rest the 3D renderer's per-frame settings re-read would
+        // suffice, but firing is harmless. Pass the value in the descriptor's
+        // declared type — some 3D checkbox setters do `!!v`, so a non-empty
+        // string like 'false' would wrongly coerce to true. Skip only if the
+        // plugin isn't loaded / has no matching setter.
+        const cap = ctl.key.charAt(0).toUpperCase() + ctl.key.slice(1);
+        const setter = window['h3dBgSet' + cap];
+        if (typeof setter !== 'function') return;
+        let raw = null;
+        try { raw = localStorage.getItem('h3d_bg_' + ctl.key); } catch (_) {}
+        let v;
+        if (ctl.type === 'toggle') {
+            v = (raw == null) ? !!ctl.default : (raw === 'true' || raw === '1');
+        } else if (ctl.type === 'range') {
+            v = (raw == null) ? Number(ctl.default) : parseFloat(raw);
+            if (!Number.isFinite(v)) v = Number(ctl.default);
+        } else {
+            v = (raw == null) ? String(ctl.default) : raw;
         }
-    }
-    function _writePanelCameraSmoothing(panelIdx, value) {
-        const v = String(value);
-        try { localStorage.setItem('h3d_bg_panel' + panelIdx + '_cameraSmoothing', v); } catch (_) {}
-        // Re-fire the global setter with its existing value so the 3D
-        // plugin's _bgEmitChange runs and each renderer re-reads its
-        // settings — picking up the per-panel override we just wrote.
-        // No global state changes hands.
-        if (typeof window.h3dBgSetCameraSmoothing === 'function') {
-            const cur = (() => {
-                try { return localStorage.getItem('h3d_bg_cameraSmoothing') || '0.5'; }
-                catch (_) { return '0.5'; }
-            })();
-            window.h3dBgSetCameraSmoothing(cur);
-        }
-    }
-    function _writePanelPalette(panelIdx, value) {
-        try { localStorage.setItem('h3d_bg_panel' + panelIdx + '_palette', value); } catch (_) {}
-        if (typeof window.h3dBgSetPalette === 'function') {
-            const cur = (() => {
-                try { return localStorage.getItem('h3d_bg_palette') || 'default'; }
-                catch (_) { return 'default'; }
-            })();
-            window.h3dBgSetPalette(cur);
-        }
-    }
-    function showPaletteSelect(panel) {
-        const idx = panels.indexOf(panel);
-        if (idx === -1) return;
-        if (typeof window.slopsmithViz_highway_3d !== 'function') return;
-        panel.paletteSelect.value = _readPanelPalette(idx);
-        panel.paletteSelect.style.display = '';
-    }
-    function hidePaletteSelect(panel) {
-        panel.paletteSelect.style.display = 'none';
+        try { setter(v); } catch (_) {}
     }
 
-    function showCamSmoothing(panel) {
+    function buildVizPopover(panel, pluginId) {
+        const pop = panel.vizPopover;
+        if (!pop) return;
+        pop.innerHTML = '';
+        const controls = getPanelControlsFor(pluginId);
         const idx = panels.indexOf(panel);
-        if (idx === -1) return;
-        if (typeof window.slopsmithViz_highway_3d !== 'function') return;
-        const v = _readPanelCameraSmoothing(idx);
-        panel.camSmoothingSlider.value = String(v);
-        panel.camSmoothingLabel.textContent = v.toFixed(2);
-        panel.camSmoothingWrap.style.display = '';
+        if (!controls || idx === -1) return;
+        const title = document.createElement('div');
+        title.textContent = (vizPlugins.find(p => p.id === pluginId)?.name || pluginId) + ' — this panel';
+        title.style.cssText = 'font-size:10px;color:#6b7280;margin-bottom:6px;white-space:nowrap;';
+        pop.appendChild(title);
+        for (const ctl of controls) {
+            const row = document.createElement('label');
+            row.style.cssText = 'display:flex;align-items:center;gap:8px;margin:4px 0;font-size:11px;color:#cbd5e1;white-space:nowrap;cursor:pointer;';
+            const name = document.createElement('span');
+            name.textContent = ctl.label;
+            name.style.cssText = 'flex:1;';
+            const cur = _vizPanelGet(pluginId, idx, ctl);
+            if (ctl.type === 'toggle') {
+                const cb = document.createElement('input');
+                cb.type = 'checkbox';
+                cb.checked = !!cur;
+                cb.onchange = () => _vizPanelSet(pluginId, panels.indexOf(panel), ctl, cb.checked);
+                row.appendChild(name);
+                row.appendChild(cb);
+            } else if (ctl.type === 'range') {
+                const sl = document.createElement('input');
+                sl.type = 'range';
+                sl.min = String(ctl.min); sl.max = String(ctl.max); sl.step = String(ctl.step ?? 0.05);
+                sl.value = String(cur);
+                sl.style.cssText = 'width:90px;accent-color:#4080e0;';
+                const val = document.createElement('span');
+                val.style.cssText = 'width:30px;text-align:right;color:#9ca3af;font-size:10px;';
+                val.textContent = Number(cur).toFixed(2);
+                sl.oninput = () => {
+                    const v = parseFloat(sl.value);
+                    val.textContent = (Number.isFinite(v) ? v : (ctl.default ?? 0)).toFixed(2);
+                    _vizPanelSet(pluginId, panels.indexOf(panel), ctl, v);
+                };
+                row.appendChild(name);
+                row.appendChild(sl);
+                row.appendChild(val);
+            } else if (ctl.type === 'select') {
+                const sel = document.createElement('select');
+                sel.style.cssText = 'background:#1a1a2e;border:1px solid #333;border-radius:4px;padding:2px 4px;font-size:10px;color:#ccc;outline:none;';
+                for (const opt of (ctl.options || [])) {
+                    const o = document.createElement('option');
+                    o.value = opt.id; o.textContent = opt.label;
+                    sel.appendChild(o);
+                }
+                sel.value = String(cur);
+                sel.onchange = () => _vizPanelSet(pluginId, panels.indexOf(panel), ctl, sel.value);
+                row.appendChild(name);
+                row.appendChild(sel);
+            } else {
+                continue;
+            }
+            pop.appendChild(row);
+        }
     }
-    function hideCamSmoothing(panel) {
-        panel.camSmoothingWrap.style.display = 'none';
+
+    function _showVizControls(panel, pluginId) {
+        if (!panel.vizSettingsBtn) return;
+        if (!getPanelControlsFor(pluginId)) { _hideVizControls(panel); return; }
+        buildVizPopover(panel, pluginId);
+        panel.vizSettingsBtn.style.display = '';
     }
+    function _hideVizControls(panel) {
+        if (panel.vizSettingsBtn) panel.vizSettingsBtn.style.display = 'none';
+        if (panel.vizPopover) { panel.vizPopover.style.display = 'none'; panel.vizPopover.innerHTML = ''; }
+    }
+    function _closeAllVizPopovers() {
+        for (const p of panels) if (p.vizPopover) p.vizPopover.style.display = 'none';
+    }
+    // Close any open viz popover when clicking outside it / its trigger button.
+    document.addEventListener('pointerdown', (e) => {
+        const t = e.target;
+        if (t && typeof t.closest === 'function' && (t.closest('.ss-viz-popover') || t.closest('[data-ss-viz-btn]'))) return;
+        _closeAllVizPopovers();
+    }, true);
 
     // ── Mastery slider helpers ──
     function hookPanelReady(panel) {
@@ -992,8 +1060,7 @@
         panel.masteryHeading.style.display = 'none';
         panel.masterySlider.style.display = 'none';
         panel.masteryLabel.style.display = 'none';
-        hidePaletteSelect(panel);
-        hideCamSmoothing(panel);
+        _hideVizControls(panel);
 
         panel.lyricsPane = createLyricsPane(panel.panelDiv);
         panel.lyricsPane.el.style.bottom = (panel.bar.offsetHeight || 28) + 'px';
@@ -1044,8 +1111,7 @@
         panel.masteryHeading.style.display = 'none';
         panel.masterySlider.style.display = 'none';
         panel.masteryLabel.style.display = 'none';
-        hidePaletteSelect(panel);
-        hideCamSmoothing(panel);
+        _hideVizControls(panel);
 
         const jtContainer = document.createElement('div');
         jtContainer.style.cssText =
@@ -1105,7 +1171,6 @@
         if (panel.tabActive) togglePanelTab(panel);
 
         panel.tabBtn.style.display = 'none';
-        panel.viewBtn.style.display = 'none';
 
         // Skip setRenderer when the caller already installed the renderer
         // before hw.init (restore-on-load path) to avoid creating a redundant
@@ -1145,6 +1210,7 @@
         const vp = vizPlugins.find(p => p.id === pluginId);
         panel.select.value = VIZ_PREFIX + ':' + pluginId + ':' + panel.arrIndex;
         panel.arrName.textContent = (arrangements[panel.arrIndex]?.name || '') + ' (' + (vp?.name || pluginId) + ')';
+        _showVizControls(panel, pluginId);
         savePanelPrefs();
     }
 
@@ -1158,6 +1224,7 @@
         recreatePanelHighway(panel);
         panel.vizMode = null;
 
+        _hideVizControls(panel);
         panel.tabBtn.style.display = '';
 
         panel.arrIndex = arrIndex;
@@ -1244,19 +1311,9 @@
             savePanelPrefs();
         };
 
-        panel.paletteSelect.onchange = () => {
-            const idx = panels.indexOf(panel);
-            if (idx === -1) return;
-            _writePanelPalette(idx, panel.paletteSelect.value);
-        };
-
-        panel.camSmoothingSlider.oninput = () => {
-            const idx = panels.indexOf(panel);
-            if (idx === -1) return;
-            const v = parseFloat(panel.camSmoothingSlider.value);
-            panel.camSmoothingLabel.textContent = (Number.isFinite(v) ? v : 0.5).toFixed(2);
-            _writePanelCameraSmoothing(idx, v);
-        };
+        // Per-panel viz controls live in the "3D ⚙" popover, which owns its own
+        // input handlers (built by buildVizPopover via _showVizControls when the
+        // panel enters viz mode). Nothing to wire here.
 
         // Pop Out / Dock button handler. In the main window: pop out this panel
         // into a new browser window. In the popup (FOLLOWER): post a `docked`
@@ -1330,6 +1387,7 @@
                         panel.updateInvertStyle(on);
                         savePanelPrefs();
                     };
+                    _showVizControls(panel, pluginId);
                     savePanelPrefs();
                 } else {
                     enterVizMode(panel, pluginId);
@@ -2237,6 +2295,9 @@
     function togglePanelBar(panel) {
         const hiding = panel.bar.style.display !== 'none';
         panel.bar.style.display = hiding ? 'none' : '';
+        // The viz popover is anchored to the bar's height — close it when the
+        // bar goes away (its trigger button is in the bar anyway).
+        if (panel.vizPopover) panel.vizPopover.style.display = 'none';
         if (hiding) {
             panel.barToggleBtn.textContent = '▴ Bar';
             panel.barToggleBtn.title = 'Show panel controls';
