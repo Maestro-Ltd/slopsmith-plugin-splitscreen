@@ -242,9 +242,10 @@
     // `key` is the localStorage suffix the viz plugin reads per-panel. For
     // highway_3d that's h3d_bg_panel<N>_<key>, falling back to the global
     // h3d_bg_<key> (see the plugin's _bgReadSetting). A viz plugin can override
-    // this list at runtime by exposing `window.slopsmithViz_<id>.panelControls`
+    // this list at runtime by exposing `window.slopsmithViz_highway_3d.panelControls`
     // (same shape) — that takes precedence so the plugin owns the up-to-date
     // list without splitscreen needing edits when it adds options.
+    // For `range`: min/max default to 0..1 and step to 0.05 when omitted.
     const VIZ_PANEL_CONTROLS = {
         highway_3d: [
             { key: 'palette',         label: 'Palette',                  type: 'select', default: 'default', options: H3D_PALETTES },
@@ -253,7 +254,22 @@
             { key: 'cameraLockZoom',  label: 'Locked zoom (In ↔ Out)',   type: 'range',  default: 0.5, min: 0, max: 1, step: 0.05 },
         ],
     };
+    // Range-control bounds with defaults (min/max/step are optional in the descriptor).
+    function _ctlRange(ctl) {
+        return {
+            lo: Number.isFinite(ctl.min) ? ctl.min : 0,
+            hi: Number.isFinite(ctl.max) ? ctl.max : 1,
+            st: Number.isFinite(ctl.step) ? ctl.step : 0.05,
+        };
+    }
     function getPanelControlsFor(pluginId) {
+        // v1: only highway_3d is wired — _vizPanelGet/_vizPanelSet use its
+        // localStorage scheme (h3d_bg_panel<N>_<key>) and its window.h3dBgSet*
+        // setters. The popover stays hidden for other viz plugins until the
+        // descriptor carries per-plugin storage/setter info (or read/write fns).
+        // A plugin can still customize *which* controls show via
+        // window.slopsmithViz_highway_3d.panelControls.
+        if (pluginId !== 'highway_3d') return null;
         const fac = window['slopsmithViz_' + pluginId];
         if (fac && Array.isArray(fac.panelControls) && fac.panelControls.length) return fac.panelControls;
         return VIZ_PANEL_CONTROLS[pluginId] || null;
@@ -871,7 +887,8 @@
         if (ctl.type === 'range') {
             const n = parseFloat(v);
             if (!Number.isFinite(n)) return ctl.default;
-            return Math.max(ctl.min, Math.min(ctl.max, n));
+            const { lo, hi } = _ctlRange(ctl);
+            return Math.max(lo, Math.min(hi, n));
         }
         return v;
     }
@@ -930,9 +947,10 @@
                 row.appendChild(name);
                 row.appendChild(cb);
             } else if (ctl.type === 'range') {
+                const { lo, hi, st } = _ctlRange(ctl);
                 const sl = document.createElement('input');
                 sl.type = 'range';
-                sl.min = String(ctl.min); sl.max = String(ctl.max); sl.step = String(ctl.step ?? 0.05);
+                sl.min = String(lo); sl.max = String(hi); sl.step = String(st);
                 sl.value = String(cur);
                 sl.style.cssText = 'width:90px;accent-color:#4080e0;';
                 const val = document.createElement('span');
@@ -940,7 +958,7 @@
                 val.textContent = Number(cur).toFixed(2);
                 sl.oninput = () => {
                     const v = parseFloat(sl.value);
-                    val.textContent = (Number.isFinite(v) ? v : (ctl.default ?? 0)).toFixed(2);
+                    val.textContent = (Number.isFinite(v) ? v : Number(ctl.default ?? 0)).toFixed(2);
                     _vizPanelSet(pluginId, panels.indexOf(panel), ctl, v);
                 };
                 row.appendChild(name);
