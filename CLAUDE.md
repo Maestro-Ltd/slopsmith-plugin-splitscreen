@@ -105,7 +105,11 @@ Each entry in `panels[]` is built with `Object.assign({ hw, arrIndex: 0 }, parts
   detectBtn,         // Detect toggle button
   updateDetectStyle, // fn(bool)
   channelBtn,        // M/L/R channel button
-  viewBtn,           // view button (always hidden — vestigial DOM placeholder, not used)
+  vizSettingsBtn,    // "3D ⚙" button — shown only in viz mode when the viz plugin
+                     //   has panel controls; opens vizPopover
+  vizPopover,        // div.ss-viz-popover (child of panelDiv, position:absolute,
+                     //   above the bar, z-index:9) — per-panel viz controls, built
+                     //   lazily by buildVizPopover()
 
   // From startSplitScreen() / initPanel():
   hw,                // highway instance (createHighway())
@@ -174,8 +178,8 @@ Each panel is always in exactly one of these modes. Flags are mutually exclusive
 - Highway NOT stopped — it stays alive with its WebSocket and rAF loop
 - `panel.hw.setRenderer(window['slopsmithViz_' + pluginId]())` installs the renderer
 - `canvas` stays visible (renderer draws to it)
-- Tab / view buttons hidden; no per-panel settings bar shown (configure via global plugin settings)
-- To exit: `recreatePanelHighway(panel)` discards the viz highway and installs a fresh 2D highway
+- Tab button hidden. A **"3D ⚙"** button (`vizSettingsBtn`) is shown if the viz plugin has per-panel controls (see "Per-panel viz controls" below); it opens `vizPopover` with those controls scoped to this panel. Other viz config still lives in the plugin's global settings UI.
+- To exit: `recreatePanelHighway(panel)` discards the viz highway and installs a fresh 2D highway; `_hideVizControls(panel)` hides the button/popover
 - **Canvas context-type lock:** the first `getContext('2d')` or `getContext('webgl')` call on a canvas locks it for its lifetime. Swapping renderers mid-session on the same canvas (e.g. 2D → WebGL → 2D) may not work without re-creating the canvas. The restore-on-load path is safe because `initPanel()` calls `panel.hw.setRenderer(factory())` **before** `hw.init(canvas)` when a viz pref is detected — so the canvas is initialised with the correct context type from the start. For mid-session 2D ↔ viz swaps (and viz-to-viz arrangement switches), `recreatePanelHighway(panel)` is called first to discard the previous highway instance before the new renderer takes over.
 
 ### Tab overlay (`tabActive=true`)
@@ -183,6 +187,15 @@ Each panel is always in exactly one of these modes. Flags are mutually exclusive
 - `tabContainer` appended over the canvas (`z-index:2`)
 - `createTabView({ container, getBeats, getCurrentTime })` — external plugin
 - Canvas hidden while tab is active
+
+## Per-panel viz controls (the "3D ⚙" popover)
+
+When a panel is in viz mode, splitscreen shows a `vizSettingsBtn` ("3D ⚙") that opens `vizPopover` — a small popover with controls that override that viz plugin's settings **for this panel only**. The controls are generated from a descriptor, so adding a new per-panel option doesn't require touching the popover code.
+
+- **Descriptor lookup** — `getPanelControlsFor(pluginId)` returns `window.slopsmithViz_<id>.panelControls` (if the viz plugin exposes that array) else the built-in `VIZ_PANEL_CONTROLS[pluginId]` (currently only `highway_3d`: `palette`, `cameraSmoothing`, `cameraLockLow`, `cameraLockZoom`). The viz-plugin-published list wins, so a plugin can keep the list current without splitscreen edits. Each descriptor entry: `{ key, label, type:'toggle'|'range'|'select', default, min?, max?, step?, options? }` where `options` for `select` is `[{id,label}]`.
+- **Storage** — per-panel values are written to the viz plugin's own per-panel keys, **not** `splitscreenPanelPrefs`. For `highway_3d`: `localStorage['h3d_bg_panel<N>_<key>']` (read by the plugin's `_bgReadSetting`, falling back to the global `h3d_bg_<key>`). `_vizPanelGet` / `_vizPanelSet` implement this; `_vizPanelSet` also re-fires `window.h3dBgSet<Key>(<currentGlobal>)` so the plugin's change event runs (instant rebuild for settings like `palette`; the 3D renderer also re-reads everything per frame, so even without the re-fire the panel key takes effect next frame). On reload, `enterVizMode` → `_showVizControls` → `buildVizPopover` re-reads the keys, so the popover reflects the saved per-panel state. Stale `h3d_bg_panel<N>_*` keys from a panel that later stopped running 3D are inert (the plugin only reads `panel<N>` keys for a live panel N) — they're left in place, same as the original palette behavior.
+- **Lifecycle** — `_showVizControls(panel, pluginId)` (builds the popover + shows the button) is called at the end of `enterVizMode` and the in-place viz-switch branch of `panel.select.onchange`. `_hideVizControls(panel)` (hides + empties) is called from `exitVizMode`, `enterLyricsMode`, `enterJumpingTabMode`. `togglePanelBar` closes the popover when hiding the bar (it's anchored to the bar height). A document-level capture `pointerdown` listener (`_closeAllVizPopovers`) closes any open popover on a click outside `.ss-viz-popover` / `[data-ss-viz-btn]`.
+- **Note for new viz plugins** that want per-panel controls: expose `window.slopsmithViz_<id>.panelControls = [...]` and use the `*_panel<N>_*` localStorage convention the plugin already reads (or, if it uses a different scheme, the descriptor would need to carry `read`/`write` fns — not implemented in v1; only `highway_3d` is wired).
 
 ## `sizeCanvases()` — call it whenever layout space changes
 
@@ -240,8 +253,9 @@ The plugin wraps `window.playSong` to:
   #splitscreen-wrap     — position:absolute, top:0, left:0, right:0, bottom:{controlsH}px, z-index:3
     .splitscreen-panel  — each panel, position:relative, overflow:hidden
       <canvas>          — the highway canvas
-      .bar              — position:absolute, bottom:0, z-index:5
-      .barToggleBtn     — position:absolute, bottom:0, right:0, z-index:6
+      .bar              — position:absolute, bottom:0, z-index:7
+      .ss-viz-popover   — position:absolute, right:4px, bottom:{barH+4}px, z-index:9 (viz mode; display:none unless opened)
+      .barToggleBtn     — position:absolute, bottom:0, right:0, z-index:8
       [lyricsPane div]  — position:absolute, inset:0, bottom:{barH}px (lyrics mode)
       [jtContainer div] — position:absolute, inset:0, bottom:{barH}px (jumping tab mode)
       [tabContainer]    — position:absolute, inset:0, bottom:{barH}px, z-index:2 (tab overlay)
