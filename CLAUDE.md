@@ -274,7 +274,7 @@ The plugin wraps `window.playSong` to:
 - Core emits `highway:visibility` (`{ visible, canvas }` on `event.detail`) on transitions. Viz renderers that mount **sibling DOM** — e.g. 3D Highway's `.h3d-wrap` overlay, a sibling of `#highway` that `display:none` on the canvas doesn't cover — subscribe to that event (filtered by canvas identity, so splitscreen's per-panel instances don't toggle each other) and hide/show their own overlays. Splitscreen used to hand-hunt `:scope > .h3d-wrap` siblings of `#highway` and toggle them itself; that's gone — the viz owns its overlay's visibility now.
 - Per-panel viz overlays don't need special handling: exiting viz mode on a panel (`exitVizMode` → `recreatePanelHighway`) discards the panel highway, which calls the renderer's `destroy()` and removes its overlay. A panel canvas hidden for lyrics/jumping-tab mode has no live viz renderer to leave anything painting.
 
-Requires a core build with the `highway:visibility` API (~slopsmith 0.2.7.1+). On an older core, `display:none` still pauses nothing extra and a sibling-mounting viz overlay (3D Highway) may bleed through the panels — update both together.
+Wants a core with the `highway:visibility` API (~slopsmith 0.2.7.1+) for the rAF skip and the overlay auto-hide — not a hard dependency. On an older core the plugin still runs; `display:none` on `#highway` just doesn't pause the hidden highway's draw loop, and a sibling-mounting viz overlay (3D Highway) may bleed through the panels. Update both together to fix that.
 
 ## External plugin integration points
 
