@@ -271,7 +271,9 @@
         // window.slopsmithViz_highway_3d.panelControls.
         if (pluginId !== 'highway_3d') return null;
         const fac = window['slopsmithViz_' + pluginId];
-        if (fac && Array.isArray(fac.panelControls) && fac.panelControls.length) return fac.panelControls;
+        // An array (even empty) is an intentional override — empty = opt out of
+        // per-panel controls. _showVizControls hides the button on an empty list.
+        if (fac && Array.isArray(fac.panelControls)) return fac.panelControls;
         return VIZ_PANEL_CONTROLS[pluginId] || null;
     }
 
@@ -754,6 +756,14 @@
             const open = vizPopover.style.display === 'none';
             _closeAllVizPopovers();
             if (open) {
+                // Rebuild from current localStorage so the controls aren't
+                // stale — global or per-panel h3d_bg_* keys may have changed
+                // (e.g. via the plugin's settings UI) while the popover was
+                // closed. _closeAllVizPopovers / the outside-click handler
+                // only hide; they don't empty, so a rebuild here is the
+                // single point that guarantees fresh values.
+                const p = panels.find(pp => pp.panelDiv === panelDiv);
+                if (p && p.vizMode) buildVizPopover(p, p.vizMode);
                 // Re-anchor in case the bar height changed since creation.
                 vizPopover.style.bottom = ((bar.offsetHeight || 28) + 4) + 'px';
                 vizPopover.style.display = '';
@@ -985,7 +995,8 @@
 
     function _showVizControls(panel, pluginId) {
         if (!panel.vizSettingsBtn) return;
-        if (!getPanelControlsFor(pluginId)) { _hideVizControls(panel); return; }
+        const ctrls = getPanelControlsFor(pluginId);
+        if (!ctrls || !ctrls.length) { _hideVizControls(panel); return; }
         buildVizPopover(panel, pluginId);
         panel.vizSettingsBtn.style.display = '';
     }
