@@ -1892,10 +1892,14 @@
         }
     }
 
-    // Called from the popup when the user clicks Dock or closes the window.
-    // Posts the panel's current state back to the main window then closes.
+    // Called from the popup when the user clicks Dock. Posts the panel's
+    // current state back to the main window, then closes. Sets _followerDocking
+    // so the beforeunload handler skips the redundant `closed` post — `docked`
+    // already tells the main to re-instate the panel, and a trailing `closed`
+    // could race ahead of a deferred _redockPanel and drop the popups entry.
     function dockFollowerPanel(panel) {
         if (!FOLLOWER) return;
+        _followerDocking = true;
         try {
             const ch = _ssChannel();
             if (ch) {
@@ -2252,8 +2256,14 @@
                 _redockPanel(msg.popupId, msg.finalState || null);
             } else if (msg.type === 'closed' && msg.popupId && popups.has(msg.popupId)) {
                 // Popup was closed without an explicit Dock click. Treat
-                // the panel as removed; don't re-add. Just drop the entry.
-                popups.delete(msg.popupId);
+                // the panel as removed; don't re-add. Just drop the entry —
+                // unless a redock for it is already queued (a `docked` arrived
+                // while a start was in flight). The popup suppresses this post
+                // when docking, so that only happens with an older popup build;
+                // belt-and-suspenders.
+                if (!_pendingRedocks.some(r => r.popupId === msg.popupId)) {
+                    popups.delete(msg.popupId);
+                }
             }
         };
         const audio = document.getElementById('audio');
@@ -2628,6 +2638,7 @@
     let _followerObservedRate = 1;         // audio-time-per-wall-second, from message deltas (speed slider)
     let _followerInterpRaf = null;         // rAF handle for the extrapolation loop
     let _followerOrphaned = false;         // true once the main window says it's closing
+    let _followerDocking = false;          // true once dockFollowerPanel() ran — suppresses the redundant `closed` post on the ensuing beforeunload
     let _followerRebuildBusy = false;      // single-flight guard: song-change rebuild in progress
     let _followerPendingFilename = null;   // a song change that arrived while busy
     // Never extrapolate more than this far past the last `time` message — a
@@ -2824,10 +2835,14 @@
         // and keep animating despite the underlying element being paused.
         _installFollowerAudioShim(_followerAudio);
 
-        // Notify main when the popup is closed so the slot isn't held open
-        // indefinitely. Registered once; survives song-change rebuilds.
+        // Notify main when the popup is closed *without* docking, so the slot
+        // isn't held open indefinitely. (When docking, dockFollowerPanel set
+        // _followerDocking — the `docked` message already covers it and a
+        // trailing `closed` could clobber a deferred redock.) Registered once;
+        // survives song-change rebuilds.
         window.addEventListener('beforeunload', () => {
             _stopFollowerInterp();
+            if (_followerDocking) return;
             try {
                 const c = _ssChannel();
                 if (c) c.postMessage({ type: 'closed', popupId: FOLLOWER.popupId });
