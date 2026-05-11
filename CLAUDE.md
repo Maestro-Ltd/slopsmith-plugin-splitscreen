@@ -237,6 +237,31 @@ Two independent levels:
 - State persisted in `barHidden` field of `splitscreenPanelPrefs`
 - Restored in `startSplitScreen()` by calling `togglePanelBar(panel)` if `panelPrefs.barHidden`
 
+## Pop-out / follower windows
+
+A panel can be detached into its own browser window (`⇱ Pop`) for multi-monitor use. `popOutPanel()` opens `/?ssFollower=1&popupId=…&filename=…&arrangement=…&mode=…&…` (panel state serialized into query params) with `window.open(url, popupId, 'popup,width=1280,height=420')`, removes the panel from the main layout, and rebuilds the remaining panels (or stops split if ≤1 remain). The popup loads the full app; the splitscreen IIFE parses the `ssFollower` flag once into `FOLLOWER` and, instead of the auto-Split UI, runs `bootFollowerMode()` → `loadSongInFollower()` → `buildFollowerLayout()`. The popup can split *itself* 1/2/2/4 via its own bottom toolbar (`rebuildFollowerLayout` / `FOLLOWER_LAYOUT_PANELS`). `dockFollowerPanel()` (the `⇲ Dock` button) posts `{type:'docked', popupId, finalState}` and `window.close()`s; the main window's `_redockPanel()` re-instates the panel.
+
+**State channels:** URL params (one-way, at open time) → popup's `FOLLOWER` config. Everything live goes over `BroadcastChannel('slopsmith-ss')` (`_ssChannel()`, lazily opened in both windows, never closed — auto-closes on window unload). No `window.opener` use.
+
+| Message | Direction | Meaning |
+|---|---|---|
+| `{type:'time', t, playing}` | main → popups | Audio playhead (broadcast only when `t` changes — skipped while paused) plus the current play/pause flag. Sent at ≤60 Hz by `_startPopupBroadcaster`. |
+| `{type:'playstate', playing}` | main → popups | Explicit play/pause transition (from `<audio>` `play`/`pause` events). Needed because `time` messages stop entirely while paused. Best-effort in JUCE mode. |
+| `{type:'song-changed', filename}` | main → popups | Main loaded a new song; popups rebuild via `_handleFollowerSongChange`. |
+| `{type:'main-closed'}` | main → popups | Main window is unloading (`beforeunload`). Popups call `_onFollowerOrphaned()`: stop syncing, `teardownPanels()`, show a "main window closed" overlay. Best-effort. |
+| `{type:'docked', popupId, finalState}` | popup → main | User clicked Dock (or closed the window after clicking it). Main re-docks the panel. |
+| `{type:'closed', popupId}` | popup → main | Popup unloading without a Dock click (`beforeunload`). Main drops the `popups` entry; the panel is *not* re-added. |
+
+**Follower clock.** The popup's `<audio>` is muted **and paused** (`_silenceFollowerAudio` — a muted-but-playing element still decodes for nothing; a `'play'` listener re-pauses it after any autoplay/src-swap). `audio.currentTime` is shimmed to `_followerCurrentTime`, and `audio.paused` is shimmed to `false` so the lyrics/jumping-tab panes (which read `audio.currentTime` and gate animation on `!audio.paused`) keep running. Between `time` broadcasts, `_startFollowerInterp()`'s rAF loop extrapolates `_followerCurrentTime` forward (`anchorT + observedRate·Δperf`) while `_followerPlaying` — so scrolling stays smooth even when the main tab is backgrounded and its broadcaster throttles to ~1 Hz. `observedRate` is derived from message Δt/Δwall (tracks the speed slider); out-of-band deltas (seek, loop wrap, long gap) reset it to 1 and the popup snaps to the broadcast value. Extrapolation is capped at `_FOLLOWER_MAX_EXTRAP_S` (2 s) past the last message as a backstop for a dropped `playstate:false`.
+
+**Single-flight.** `_handleFollowerSongChange` is single-flight (`_followerRebuildBusy`): a song change arriving mid-rebuild is coalesced into `_followerPendingFilename` and the latest one runs after the current rebuild finishes — so rapid song skips in the main window don't spawn overlapping `playSong`/`buildFollowerLayout` runs in the popup. `rebuildFollowerLayout` (the layout `<select>`) bails and re-syncs the picker if a song-change rebuild is in flight. On the main side, `_redockPanel` defers (`_pendingRedocks`, drained in `startSplitScreen`'s `finally`, same pattern as `_pendingRebuild`) when a start is in flight, so a `docked` message landing during the post-pop-out rebuild doesn't tear down the half-built layout.
+
+**Crash/force-close handling.** A popup that dies without firing `beforeunload` is reaped by `_startPopupBroadcaster`'s tick (`popup.closed` check); when the last popup is gone the broadcaster stops itself.
+
+**Pop-out failure UX.** `popOutPanel` uses a non-blocking top-centre toast (`_showMainToast`) — never `alert()` — for "BroadcastChannel unsupported" / "popup blocked", and bails before mutating the layout, so the panel stays put.
+
+**Caveats.** localStorage is shared between the windows; per-panel viz keys (e.g. `h3d_bg_panel<N>_*`) written by both are last-write-wins (acceptable). The `ss-follower` chrome-hiding CSS keys on hardcoded element ids — brittle if core renames them (deliberate tradeoff vs. chasing every id). Re-popping the same panel isn't possible (it's removed from the layout on the first pop); multiple *different* panels can be popped at once (tracked in the `popups` Map by `popupId`).
+
 ## `playSong` wrapper and the `_onReady` race
 
 The plugin wraps `window.playSong` to:
