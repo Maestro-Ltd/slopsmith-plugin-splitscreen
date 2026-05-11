@@ -34,6 +34,11 @@
     let vizPlugins   = []; // {id, name, ...} — type=visualization plugins from /api/plugins
     let _starting    = false; // re-entrancy guard for startSplitScreen
     let _pendingRebuild = false; // rebuildLayout requested while a start is in flight
+    // Redock requests ({popupId, finalState}) that arrived while a start was in
+    // flight — drained in startSplitScreen()'s finally, same pattern as
+    // _pendingRebuild. Without this a popup's `docked` message landing during
+    // the post-pop-out rebuild would teardown the half-built layout mid-flight.
+    let _pendingRedocks = [];
 
     // Core swaps a panel's <canvas> element when a renderer needs a different
     // context type than the one the canvas is bound to (browsers lock a canvas
@@ -1775,6 +1780,37 @@
         }
     }
 
+    // Small non-blocking notice in the main window (replaces blocking alert()
+    // for pop-out failures). Top-centre pill, fades in next frame, auto-removes
+    // after ~3.5 s; a new call replaces any in-flight one.
+    let _mainToastEl = null;
+    function _showMainToast(msg) {
+        try {
+            if (_mainToastEl) { _mainToastEl.remove(); _mainToastEl = null; }
+            const el = document.createElement('div');
+            el.id = 'splitscreen-toast';
+            el.textContent = msg;
+            el.style.cssText =
+                'position:fixed;top:24px;left:50%;transform:translateX(-50%) translateY(-12px);' +
+                'max-width:80vw;padding:10px 18px;background:rgba(8,8,16,0.95);' +
+                'border:1px solid #4080e0;border-radius:8px;box-shadow:0 6px 20px rgba(0,0,0,0.55);' +
+                'z-index:10002;font-family:sans-serif;font-size:13px;color:#e5e7eb;text-align:center;' +
+                'opacity:0;transition:opacity 250ms ease,transform 250ms ease;pointer-events:none;';
+            document.body.appendChild(el);
+            _mainToastEl = el;
+            requestAnimationFrame(() => {
+                el.style.opacity = '1';
+                el.style.transform = 'translateX(-50%) translateY(0)';
+            });
+            setTimeout(() => {
+                if (_mainToastEl !== el) return;
+                el.style.opacity = '0';
+                el.style.transform = 'translateX(-50%) translateY(-12px)';
+                setTimeout(() => { if (_mainToastEl === el) _mainToastEl = null; el.remove(); }, 300);
+            }, 3500);
+        } catch (_) { /* DOM not ready / detached — silently drop */ }
+    }
+
     // Open a popup window pre-configured to show this panel as a follower.
     // The panel is removed from the main layout once the popup is opened
     // (slot collapses; rebuildLayout reflows remaining panels).
@@ -1783,7 +1819,7 @@
         const idx = panels.indexOf(panel);
         if (idx === -1) return;
         if (typeof BroadcastChannel !== 'function') {
-            alert('Pop-out requires a browser that supports BroadcastChannel.');
+            _showMainToast('Pop-out requires a browser that supports BroadcastChannel.');
             return;
         }
         const cfg = _captureFollowerConfig(panel);
@@ -1805,7 +1841,7 @@
 
         const popup = window.open(url.toString(), popupId, 'popup,width=1280,height=420');
         if (!popup) {
-            alert('Pop-out blocked by browser. Allow popups for this origin and try again.');
+            _showMainToast('Pop-out blocked by the browser. Allow popups for this site and try again.');
             return;
         }
         // Track the popup (incl. its window handle so the broadcaster can reap
@@ -1817,7 +1853,10 @@
         _lastBroadcastTime = null;
 
         // Open the channel in the main window so we can broadcast time and
-        // listen for the popup's docked / closed messages.
+        // listen for the popup's docked / closed messages. Every `time`
+        // message carries the current `playing` flag, so the fresh popup
+        // learns the play/pause state from the first one it receives (the
+        // _lastBroadcastTime reset above forces that to be sent promptly).
         _ensureMainBroadcasterAndListener();
         _startPopupBroadcaster();
 
@@ -1853,10 +1892,14 @@
         }
     }
 
-    // Called from the popup when the user clicks Dock or closes the window.
-    // Posts the panel's current state back to the main window then closes.
+    // Called from the popup when the user clicks Dock. Posts the panel's
+    // current state back to the main window, then closes. Sets _followerDocking
+    // so the beforeunload handler skips the redundant `closed` post — `docked`
+    // already tells the main to re-instate the panel, and a trailing `closed`
+    // could race ahead of a deferred _redockPanel and drop the popups entry.
     function dockFollowerPanel(panel) {
         if (!FOLLOWER) return;
+        _followerDocking = true;
         try {
             const ch = _ssChannel();
             if (ch) {
@@ -2050,6 +2093,16 @@
             stopTimeSync();
         } finally {
             _starting = false;
+            // Drain redock requests that arrived mid-start (popup's `docked`
+            // message). Each _redockPanel re-enters startSplitScreen (setting
+            // _starting), whose own finally drains the rest — so stop here as
+            // soon as _starting flips, to avoid re-queuing into an infinite
+            // loop. Do this BEFORE the rebuild drain so a queued layout change
+            // reflows the final panel set including the redocked one.
+            while (_pendingRedocks.length && !_starting) {
+                const r = _pendingRedocks.shift();
+                _redockPanel(r.popupId, r.finalState);
+            }
             // Drain a queued rebuild from rebuildLayout. Only fire if the
             // session is still active — a failed start above already did
             // a full teardown, in which case there's nothing to rebuild.
@@ -2160,7 +2213,10 @@
             const t = audio.currentTime;
             if (Number.isFinite(t) && t !== _lastBroadcastTime) {
                 _lastBroadcastTime = t;
-                ch.postMessage({ type: 'time', t });
+                // Carry the play/pause state on every tick — cheap, and it
+                // means a freshly-opened popup learns it from the first
+                // message instead of waiting for a play/pause transition.
+                ch.postMessage({ type: 'time', t, playing: !audio.paused });
             }
         }, 1000 / 60);
     }
@@ -2176,6 +2232,19 @@
     //  Main-window broadcaster / listener for popped-out panels
     // ══════════════════════════════════════════════════════════════════════
     let _mainChannelListenerAttached = false;
+    // Broadcast the current play/pause state to any popups so they can pause
+    // their time extrapolation precisely (instead of relying solely on the
+    // "audio time stopped advancing" heuristic + backstop). Best-effort: in
+    // JUCE mode the <audio> element's play/pause events may not fire — the
+    // follower's heuristic still covers that case.
+    function _broadcastMainPlayState() {
+        try {
+            const ch = _ssChannel();
+            if (!ch || !popups.size) return;
+            const audio = document.getElementById('audio');
+            ch.postMessage({ type: 'playstate', playing: !!(audio && !audio.paused) });
+        } catch (_) {}
+    }
     function _ensureMainBroadcasterAndListener() {
         if (FOLLOWER) return;            // never run in popup
         const ch = _ssChannel();
@@ -2187,16 +2256,32 @@
                 _redockPanel(msg.popupId, msg.finalState || null);
             } else if (msg.type === 'closed' && msg.popupId && popups.has(msg.popupId)) {
                 // Popup was closed without an explicit Dock click. Treat
-                // the panel as removed; don't re-add. Just drop the entry.
-                popups.delete(msg.popupId);
+                // the panel as removed; don't re-add. Just drop the entry —
+                // unless a redock for it is already queued (a `docked` arrived
+                // while a start was in flight). The popup suppresses this post
+                // when docking, so that only happens with an older popup build;
+                // belt-and-suspenders.
+                if (!_pendingRedocks.some(r => r.popupId === msg.popupId)) {
+                    popups.delete(msg.popupId);
+                }
             }
         };
+        const audio = document.getElementById('audio');
+        if (audio) {
+            audio.addEventListener('play', _broadcastMainPlayState);
+            audio.addEventListener('pause', _broadcastMainPlayState);
+        }
     }
 
     // Re-instate a panel that was popped out, using the original config
     // we captured at pop-out time, overlaid with anything the popup told
     // us via `finalState`.
     function _redockPanel(popupId, finalState) {
+        // A start (e.g. the rebuild that follows a pop-out) is in flight —
+        // tearing down now would race the in-flight panel build. Queue it;
+        // startSplitScreen's finally drains _pendingRedocks. Don't delete
+        // the popups entry yet — the deferred call needs it.
+        if (_starting) { _pendingRedocks.push({ popupId, finalState }); return; }
         const entry = popups.get(popupId);
         if (!entry) return;
         popups.delete(popupId);
@@ -2445,6 +2530,19 @@
         if (active && !FOLLOWER) sizeCanvases();
     });
 
+    // Tell any popped-out panels the main window is going away so they stop
+    // syncing (and stop their highway rAF loops) and show a notice instead of
+    // freezing silently. Best-effort — beforeunload BroadcastChannel posts
+    // aren't guaranteed to flush; the popup's own state stays the floor.
+    if (!FOLLOWER) {
+        window.addEventListener('beforeunload', () => {
+            try {
+                const c = _ssChannel();
+                if (c && popups.size) c.postMessage({ type: 'main-closed' });
+            } catch (_) {}
+        });
+    }
+
     // ── Hook into playSong ──
     const _play = window.playSong;
     window.playSong = async function (f, a) {
@@ -2523,14 +2621,30 @@
     //  (especially _followerAudio) must be past their TDZ before we call it.
     // ══════════════════════════════════════════════════════════════════════
 
-    // In follower mode, the popup's local <audio> element is paused (we never
-    // surface a play button, and we can't programmatically auto-play across
-    // browsers reliably). Lyrics pane, jumping tab pane, and the highway's
-    // own time-driven helpers all read `audio.currentTime` directly though.
-    // We shim the property here so reads in the popup return the time
-    // broadcast from the main window — letting all those subsystems work
-    // without needing per-mode rewires.
+    // ── Follower clock + rebuild state ────────────────────────────────────
+    // In follower mode the popup's local <audio> element is muted AND paused
+    // (we never surface a play button, can't reliably autoplay, and don't
+    // want it decoding audio nobody hears). Lyrics pane, jumping tab pane,
+    // and the highway's time-driven helpers all read `audio.currentTime`
+    // directly though — so we shim that property to the time broadcast from
+    // the main window. _followerCurrentTime is that value; while the main
+    // reports playback it's extrapolated forward with performance.now()
+    // between broadcasts so scrolling stays smooth even if the main tab is
+    // backgrounded and its 60 Hz broadcaster throttles to ~1 Hz.
     let _followerCurrentTime = 0;
+    let _followerPlaying = false;          // last play/pause state inferred from the main window
+    let _followerAnchorT = 0;              // broadcast time at the last `time` message
+    let _followerAnchorPerf = 0;           // performance.now() at that message (0 = none yet)
+    let _followerObservedRate = 1;         // audio-time-per-wall-second, from message deltas (speed slider)
+    let _followerInterpRaf = null;         // rAF handle for the extrapolation loop
+    let _followerOrphaned = false;         // true once the main window says it's closing
+    let _followerDocking = false;          // true once dockFollowerPanel() ran — suppresses the redundant `closed` post on the ensuing beforeunload
+    let _followerRebuildBusy = false;      // single-flight guard: song-change rebuild in progress
+    let _followerPendingFilename = null;   // a song change that arrived while busy
+    // Never extrapolate more than this far past the last `time` message — a
+    // backstop in case a `playstate:false` (pause) message is dropped.
+    const _FOLLOWER_MAX_EXTRAP_S = 2.0;
+
     function _installFollowerAudioShim(audio) {
         if (!audio) return;
         try {
@@ -2539,13 +2653,153 @@
                 set(_v) { /* ignore — popup audio is a follower */ },
                 configurable: true,
             });
+            // The element is actually paused (see below — we stop the needless
+            // decode) but anything in the popup that gates animation on
+            // `!audio.paused` should keep running: the follower is conceptually
+            // always following the main playhead.
+            Object.defineProperty(audio, 'paused', {
+                get() { return false; },
+                configurable: true,
+            });
         } catch (e) {
-            console.warn('[splitscreen-follower] failed to install audio.currentTime shim:', e);
+            console.warn('[splitscreen-follower] failed to install audio shim:', e);
         }
     }
 
+    // The <audio> element we've already attached the keep-paused `play`
+    // listener to (so calling _silenceFollowerAudio repeatedly — boot + each
+    // song change — doesn't stack listeners; also covers a hypothetical
+    // element swap).
+    let _followerPlayGuardEl = null;
+    // Keep the popup's <audio> paused — and re-pause it whenever anything
+    // calls .play() (autoplay, a src swap on song change). Mute alone leaves
+    // it decoding the stream for nothing.
+    function _silenceFollowerAudio(audio) {
+        if (!audio) return;
+        audio.muted = true;
+        audio.volume = 0;
+        try { audio.pause(); } catch (_) {}
+        if (_followerPlayGuardEl !== audio) {
+            _followerPlayGuardEl = audio;
+            audio.addEventListener('play', () => { try { audio.pause(); } catch (_) {} });
+        }
+    }
+
+    // rAF loop that advances _followerCurrentTime between `time` broadcasts
+    // while the main window reports playback. Idempotent; cancelled on
+    // orphan / unload.
+    function _startFollowerInterp() {
+        if (_followerInterpRaf != null) return;
+        const tick = () => {
+            _followerInterpRaf = requestAnimationFrame(tick);
+            if (_followerOrphaned || !_followerPlaying || _followerAnchorPerf === 0) return;
+            const wall = (performance.now() - _followerAnchorPerf) / 1000;
+            if (wall > _FOLLOWER_MAX_EXTRAP_S) { _followerPlaying = false; return; }
+            const est = _followerAnchorT + _followerObservedRate * wall;
+            _followerCurrentTime = est;
+            for (const p of panels) {
+                if (!p.lyricsMode && !p.jumpingTabMode) p.hw.setTime(est);
+            }
+        };
+        _followerInterpRaf = requestAnimationFrame(tick);
+    }
+    function _stopFollowerInterp() {
+        if (_followerInterpRaf != null) { cancelAnimationFrame(_followerInterpRaf); _followerInterpRaf = null; }
+    }
+
+    // Handle a `time` broadcast: derive playback rate vs wall-time, re-anchor,
+    // fan the value out to every panel highway.
+    //
+    // The most reliable "is it playing" signal is observing the broadcast
+    // clock itself advance in real time (dT/dWall ≈ playbackRate) — that works
+    // regardless of whether the main window's <audio>.paused is meaningful
+    // (it isn't, in JUCE mode). The optional `playing` flag on the message is
+    // only used to STOP extrapolating when the clock has also stalled: it lets
+    // us tell "main paused" from "main tab throttled to ~1 Hz" within the gap
+    // between messages, which the clock alone can't. The 2 s extrapolation
+    // backstop covers the case where the flag is absent/unreliable.
+    function _onFollowerTimeMessage(t, playing) {
+        const nowP = performance.now();
+        let advancedInRealtime = false;
+        if (_followerAnchorPerf > 0) {
+            const dWall = (nowP - _followerAnchorPerf) / 1000;
+            const dT = t - _followerAnchorT;
+            if (dT > 0 && dWall > 0.001) {
+                const rate = dT / dWall;
+                if (rate > 0.05 && rate < 5) {
+                    _followerObservedRate = rate;
+                    advancedInRealtime = true;          // audio time is moving → playing
+                } else {
+                    _followerObservedRate = 1;          // out-of-band (seek / loop wrap / long gap) — snap, don't extrapolate off it
+                }
+            } else if (dT < 0) {
+                _followerObservedRate = 1;              // backward seek — snap
+            }
+            // dT === 0 → clock stalled (paused, or just no audio-frame refresh).
+        }
+        _followerAnchorT = t;
+        _followerAnchorPerf = nowP;
+        _followerCurrentTime = t;
+        for (const p of panels) {
+            if (!p.lyricsMode && !p.jumpingTabMode) p.hw.setTime(t);
+        }
+        if (advancedInRealtime || playing === true) {
+            // Either the clock observably moved, or the main says it's playing
+            // (audio.currentTime just hasn't refreshed yet) — extrapolate.
+            _followerPlaying = true;
+        } else if (playing === false) {
+            // Clock didn't advance AND the main says it's paused → definitely
+            // paused; stop extrapolating and park here.
+            _followerPlaying = false;
+        }
+        // (no advance + playing undefined → old main build: leave _followerPlaying
+        //  as-is; the backstop trips after _FOLLOWER_MAX_EXTRAP_S if it was a pause.)
+        _maybeDismissFollowerToastOnPlay(t);
+    }
+
+    // Handle an explicit play/pause notice from the main window.
+    function _onFollowerPlayState(playing) {
+        _followerPlaying = playing;
+        if (playing) {
+            _followerAnchorPerf = performance.now();    // extrapolate from "now", not a stale anchor
+        } else {
+            // Snap every panel to the last known time so a half-extrapolated
+            // frame doesn't linger on screen.
+            for (const p of panels) {
+                if (!p.lyricsMode && !p.jumpingTabMode) p.hw.setTime(_followerAnchorT);
+            }
+            _followerCurrentTime = _followerAnchorT;
+        }
+    }
+
+    // The main window is closing — stop syncing, tear the panels down, and
+    // tell the user. Idempotent.
+    function _onFollowerOrphaned() {
+        if (_followerOrphaned) return;
+        _followerOrphaned = true;
+        _stopFollowerInterp();
+        try { teardownPanels(); } catch (_) {}   // also stops every panel highway / WS / rAF
+        if (_followerToolbar) { try { _followerToolbar.remove(); } catch (_) {} _followerToolbar = null; }
+        if (_followerToast) { try { _followerToast.remove(); } catch (_) {} _followerToast = null; }
+        const o = document.createElement('div');
+        o.id = 'follower-orphaned-overlay';
+        o.style.cssText =
+            'position:fixed;inset:0;z-index:100000;background:#0a0a14;color:#9ca3af;' +
+            'display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;' +
+            'font-family:sans-serif;text-align:center;padding:24px;';
+        const h = document.createElement('div');
+        h.style.cssText = 'font-size:18px;font-weight:600;color:#e5e7eb;';
+        h.textContent = 'Main Slopsmith window closed';
+        const sub = document.createElement('div');
+        sub.style.cssText = 'font-size:13px;';
+        sub.textContent = 'This follower window is no longer synced — you can close it.';
+        o.appendChild(h);
+        o.appendChild(sub);
+        document.body.appendChild(o);
+    }
+
     // Cached reference to the popup's <audio> element so the song-change
-    // handler can re-assert mute / re-shim without re-querying.
+    // handler can re-assert mute/pause + re-shim without re-querying.
     let _followerAudio = null;
 
     function bootFollowerMode() {
@@ -2570,26 +2824,33 @@
         document.head.appendChild(style);
         document.body.classList.add('ss-follower');
 
-        // Mute the popup's local audio. The follower never plays; it slaves
-        // to the main window's currentTime via BroadcastChannel.
+        // Mute AND pause the popup's local audio (and keep it paused — see
+        // _silenceFollowerAudio) — the follower never plays, it slaves to the
+        // main window's currentTime via BroadcastChannel, and a muted-but-
+        // playing element still decodes the stream for nothing.
         _followerAudio = document.getElementById('audio');
-        if (_followerAudio) {
-            _followerAudio.muted = true;
-            _followerAudio.volume = 0;
-        }
-        // Shim audio.currentTime so anything that reads it (lyrics pane,
-        // jumping tab pane, ...) sees the broadcast time, not the popup's
-        // own paused-at-0 audio clock.
+        _silenceFollowerAudio(_followerAudio);
+        // Shim audio.currentTime (→ broadcast time) and audio.paused (→ false)
+        // so the lyrics pane, jumping tab pane, etc. see the broadcast clock
+        // and keep animating despite the underlying element being paused.
         _installFollowerAudioShim(_followerAudio);
 
-        // Notify main when the popup is closed so the slot isn't held open
-        // indefinitely. Registered once; survives song-change rebuilds.
+        // Notify main when the popup is closed *without* docking, so the slot
+        // isn't held open indefinitely. (When docking, dockFollowerPanel set
+        // _followerDocking — the `docked` message already covers it and a
+        // trailing `closed` could clobber a deferred redock.) Registered once;
+        // survives song-change rebuilds.
         window.addEventListener('beforeunload', () => {
+            _stopFollowerInterp();
+            if (_followerDocking) return;
             try {
                 const c = _ssChannel();
                 if (c) c.postMessage({ type: 'closed', popupId: FOLLOWER.popupId });
             } catch (_) {}
         });
+
+        // Start the between-broadcasts extrapolation loop (idempotent).
+        _startFollowerInterp();
 
         // Resize handler: walk every live panel — multi-panel popups
         // (top-bottom, left-right, quad) need each highway / JT pane
@@ -2626,14 +2887,14 @@
             console.error('[splitscreen-follower] playSong failed:', e);
             return;
         }
-        // Re-acquire the <audio> element, re-assert mute (playSong resets
-        // audio.src; some browsers unmute on src change), and re-install the
-        // currentTime shim. The element is normally the same instance so the
-        // Object.defineProperty override persists, but re-querying + re-defining
+        // Re-acquire the <audio> element, re-assert mute+pause (playSong resets
+        // audio.src and may .play(); some browsers unmute on src change), and
+        // re-install the shim. The element is normally the same instance so the
+        // Object.defineProperty overrides persist, but re-querying + re-defining
         // (configurable:true → harmless redefine) keeps the shim correct even
         // if a future refactor swaps the element out.
         _followerAudio = document.getElementById('audio');
-        if (_followerAudio) { _followerAudio.muted = true; _followerAudio.volume = 0; }
+        _silenceFollowerAudio(_followerAudio);
         _installFollowerAudioShim(_followerAudio);
         await waitForHighwayReady();
         // Ensure viz plugin metadata is ready before buildFollowerLayout calls
@@ -2808,26 +3069,29 @@
         active = true;
         for (const p of panels) p.hw.resize();
 
-        // Subscribe to the broadcast channel for time + song-change. Fans
-        // out time updates to every panel; the listener captures `panels`
-        // by reference so subsequent rebuilds (which mutate panels in
-        // place via teardownPanels + push) automatically see new panels.
+        // Subscribe to the broadcast channel for time / playstate / song-change
+        // / main-closed. Re-assigning `onmessage` on each rebuild replaces the
+        // prior handler (no listener stacking); each handler reads the live
+        // module-level `panels` so it always sees the current grid.
         const ch = _ssChannel();
         if (ch) {
             ch.onmessage = (ev) => {
+                if (_followerOrphaned) return;
                 const msg = ev.data || {};
                 if (msg.type === 'time' && Number.isFinite(msg.t)) {
-                    _followerCurrentTime = msg.t;
-                    for (const p of panels) {
-                        if (!p.lyricsMode && !p.jumpingTabMode) p.hw.setTime(msg.t);
-                    }
-                    // Song-change toast lingers until playback begins.
-                    _maybeDismissFollowerToastOnPlay(msg.t);
+                    _onFollowerTimeMessage(msg.t, msg.playing);
+                } else if (msg.type === 'playstate') {
+                    _onFollowerPlayState(!!msg.playing);
+                } else if (msg.type === 'main-closed') {
+                    _onFollowerOrphaned();
                 } else if (msg.type === 'song-changed' && msg.filename && msg.filename !== currentFilename) {
                     _handleFollowerSongChange(msg.filename);
                 }
             };
         }
+        // Make sure the extrapolation loop is running (cheap if already started
+        // from bootFollowerMode; also covers a hypothetical rebuild before boot).
+        _startFollowerInterp();
     }
 
     // Bottom toolbar inside the popup window: layout picker + dock-all.
@@ -2880,6 +3144,14 @@
     // slots fill with smart defaults via getDefaultArrangements.
     function rebuildFollowerLayout(newLayoutKey) {
         if (!FOLLOWER_LAYOUT_PANELS[newLayoutKey]) return;
+        if (_followerRebuildBusy) {
+            // A song-change rebuild is mid-flight (awaiting playSong / ready);
+            // tearing down now would race it. Snap the picker back so the UI
+            // doesn't lie; the user can re-pick once the song settles.
+            const sel = document.getElementById('follower-layout-select');
+            if (sel) sel.value = _followerLayoutKey;
+            return;
+        }
         if (newLayoutKey === _followerLayoutKey && panels.length === FOLLOWER_LAYOUT_PANELS[newLayoutKey]) return;
 
         // Capture current panel configs (in slot order) so the rebuilt
@@ -2901,17 +3173,37 @@
 
     // Rebuild the follower panels for a new song while preserving the
     // user's layout + per-panel mode + arrangement choices. Triggered by
-    // the main window's `song-changed` broadcast.
+    // the main window's `song-changed` broadcast. Single-flight: a change
+    // arriving while one is in progress is coalesced — only the latest
+    // pending filename runs after the current rebuild finishes.
     async function _handleFollowerSongChange(newFilename) {
-        const cfgs = _captureAllFollowerConfigs();
-        teardownPanels();
-        active = false;
-        await loadSongInFollower(newFilename, cfgs);
-        // Briefly surface what the new song is so the popup viewer
-        // (often on a second monitor, away from the main window's HUD)
-        // sees the title / artist / tuning / per-panel arrangement
-        // before notes start scrolling.
-        _showFollowerSongToast(highway.getSongInfo());
+        if (_followerOrphaned) return;
+        if (_followerRebuildBusy) { _followerPendingFilename = newFilename; return; }
+        _followerRebuildBusy = true;
+        // Pause extrapolation during the rebuild — panels are being torn down
+        // and rebuilt; the first `time` message for the new song re-arms it.
+        _followerPlaying = false;
+        _followerAnchorPerf = 0;
+        try {
+            const cfgs = _captureAllFollowerConfigs();
+            teardownPanels();
+            active = false;
+            await loadSongInFollower(newFilename, cfgs);
+            // Briefly surface what the new song is so the popup viewer
+            // (often on a second monitor, away from the main window's HUD)
+            // sees the title / artist / tuning / per-panel arrangement
+            // before notes start scrolling.
+            _showFollowerSongToast(highway.getSongInfo());
+        } catch (e) {
+            console.error('[splitscreen-follower] song-change rebuild failed:', e);
+        } finally {
+            _followerRebuildBusy = false;
+            const pending = _followerPendingFilename;
+            _followerPendingFilename = null;
+            if (!_followerOrphaned && pending && pending !== currentFilename) {
+                _handleFollowerSongChange(pending);
+            }
+        }
     }
 
     // ── Song-change toast (popup only) ────────────────────────────────
