@@ -51,9 +51,9 @@ Each panel's mini bar has a **⇱ Pop** button. Clicking it opens that panel in 
 While popped:
 
 - The panel disappears from the main splitscreen layout (the slot collapses; if only one panel was left in main, the main window goes back to its default highway).
-- The popup is **muted**. Audio still plays from the main window — there's only one sound source, never doubled or out of sync.
-- Time is broadcast from the main window via `BroadcastChannel`, so the popup's highway / lyrics / jumping tab follows the main song precisely.
-- If you load a different song in the main window, popped panels **auto-follow** in their current mode + arrangement (clamped to arrangement 0 if the new song has fewer arrangements).
+- The popup is **muted and paused** — it doesn't even decode the audio. Sound plays only from the main window; there's one source, never doubled or out of sync.
+- Time is broadcast from the main window via `BroadcastChannel`, so the popup's highway / lyrics / jumping tab follows the main song precisely — and it stays smooth even if you give the popup focus and the main window goes into the background (the popup interpolates between updates).
+- If you load a different song in the main window, popped panels **auto-follow** in their current mode + arrangement (clamped to arrangement 0 if the new song has fewer arrangements); rapid song-skips in the main window are coalesced so the popup just lands on the final one.
 
 To bring it back: click **⇲ Dock** in the popup, or simply close the popup window. The panel returns to its original splitscreen slot in the main window. Per-panel state changes you made in the popup (mastery, palette, camera smoothing, …) are preserved on dock-back.
 
@@ -61,7 +61,7 @@ To bring it back: click **⇲ Dock** in the popup, or simply close the popup win
 
 Every popup has a small toolbar pinned to its bottom edge with a **Layout** picker. The same layouts available in main are available here: **Single**, **Top/Bottom**, **Left/Right**, **Quad**. Switching layouts inside a popup keeps the slots you already configured and fills any new ones (lead → rhythm → bass) using the same smart-defaults the main toggle uses. Each popup has its own layout independent of main and any other popups, so you can run e.g. a quad of all four arrangements on a second monitor while keeping main on a single 3D highway.
 
-> Pop-out uses standard `window.open` and `BroadcastChannel`. The popup must be triggered by your click (a user gesture) so popup blockers should leave it alone — but if your browser does block it, allow popups for the slopsmith origin and try again. Closing the main window while popups are open will freeze them (no time source); they'll need to be closed manually.
+> Pop-out uses standard `window.open` and `BroadcastChannel`. The popup must be triggered by your click (a user gesture) so popup blockers should leave it alone — but if your browser does block it (or doesn't support `BroadcastChannel`), the panel stays put and you get a brief notice instead. If you close the main window while popups are open, each popup detects it and shows a "main window closed" notice so you know to close it (best-effort — if the browser doesn't deliver that last message the popup just freezes, same as before).
 
 ## Settings
 
