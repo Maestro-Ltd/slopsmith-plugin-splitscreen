@@ -2655,14 +2655,23 @@
         }
     }
 
-    // Keep the popup's <audio> paused (and re-pause it if anything calls
-    // .play() — autoplay, a src swap on song change). Mute alone leaves it
-    // decoding the stream for nothing.
+    // The <audio> element we've already attached the keep-paused `play`
+    // listener to (so calling _silenceFollowerAudio repeatedly — boot + each
+    // song change — doesn't stack listeners; also covers a hypothetical
+    // element swap).
+    let _followerPlayGuardEl = null;
+    // Keep the popup's <audio> paused — and re-pause it whenever anything
+    // calls .play() (autoplay, a src swap on song change). Mute alone leaves
+    // it decoding the stream for nothing.
     function _silenceFollowerAudio(audio) {
         if (!audio) return;
         audio.muted = true;
         audio.volume = 0;
         try { audio.pause(); } catch (_) {}
+        if (_followerPlayGuardEl !== audio) {
+            _followerPlayGuardEl = audio;
+            audio.addEventListener('play', () => { try { audio.pause(); } catch (_) {} });
+        }
     }
 
     // rAF loop that advances _followerCurrentTime between `time` broadcasts
@@ -2804,17 +2813,12 @@
         document.head.appendChild(style);
         document.body.classList.add('ss-follower');
 
-        // Mute AND pause the popup's local audio — the follower never plays,
-        // it slaves to the main window's currentTime via BroadcastChannel, and
-        // a muted-but-playing element still decodes the stream for nothing.
+        // Mute AND pause the popup's local audio (and keep it paused — see
+        // _silenceFollowerAudio) — the follower never plays, it slaves to the
+        // main window's currentTime via BroadcastChannel, and a muted-but-
+        // playing element still decodes the stream for nothing.
         _followerAudio = document.getElementById('audio');
         _silenceFollowerAudio(_followerAudio);
-        if (_followerAudio) {
-            // Any later .play() (autoplay, src swap on song change) — undo it.
-            _followerAudio.addEventListener('play', () => {
-                try { _followerAudio.pause(); } catch (_) {}
-            });
-        }
         // Shim audio.currentTime (→ broadcast time) and audio.paused (→ false)
         // so the lyrics pane, jumping tab pane, etc. see the broadcast clock
         // and keep animating despite the underlying element being paused.
