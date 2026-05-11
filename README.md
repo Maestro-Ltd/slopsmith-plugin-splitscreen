@@ -9,7 +9,7 @@ A plugin for [Slopsmith](https://github.com/byrongamatos/slopsmith) that shows 2
 - **Per-panel visualization picker** — each panel can independently run any installed `slopsmithViz` plugin (e.g. the 3D highway) alongside the default 2D highway
 - **Per-panel invert toggle** — flip individual panels between player and audience perspective independently
 - **Per-panel note detection** — each panel can independently detect notes from a specific audio input channel; pairs with the [Note Detect](https://github.com/byrongamatos/slopsmith-plugin-notedetect) plugin for multi-guitar setups
-- **Pop a panel into its own window** — click **⇱ Pop** on any panel to open it in a new browser window; drag it to a second monitor and resize it freely. The popup is muted and slaved to the main window's audio time, so there's still only one sound source. A **⇲ Dock** button (or just closing the window) returns the panel to its original splitscreen slot.
+- **Pop a panel into its own window** — click **⇱ Pop** on any panel to open it in a new browser window; drag it to a second monitor and resize it freely. The popup is muted and paused (it doesn't even decode the audio) and slaved to the main window's audio time, so there's still only one sound source. Click **⇲ Dock** to send the panel back to its splitscreen slot; just closing the popup window instead removes that panel.
 - **Split a popped window internally** — every popup gets its own bottom toolbar with a layout picker (Single / Top-Bottom / Left-Right / Quad). A popped window can mirror the same layouts as the main splitter, so you can run e.g. a quad on a second monitor with all four arrangements while the main window stays single-panel.
 - **Hide/show bottom controls bar** — click **▾ Bar** (next to Close) to collapse the global player controls and reclaim the vertical space; a floating **▴ Controls** pill restores them
 - **Hide/show per-panel mini bar** — each panel has a **▾ Bar** button pinned to its bottom-right corner to collapse that panel's controls independently; click **▴ Bar** to restore
@@ -55,7 +55,9 @@ While popped:
 - Time is broadcast from the main window via `BroadcastChannel`, so the popup's highway / lyrics / jumping tab follows the main song precisely — and it stays smooth even if you give the popup focus and the main window goes into the background (the popup interpolates between updates).
 - If you load a different song in the main window, popped panels **auto-follow** in their current mode + arrangement (clamped to arrangement 0 if the new song has fewer arrangements); rapid song-skips in the main window are coalesced so the popup just lands on the final one.
 
-To bring it back: click **⇲ Dock** in the popup, or simply close the popup window. The panel returns to its original splitscreen slot in the main window. Per-panel state changes you made in the popup (mastery, palette, camera smoothing, …) are preserved on dock-back.
+To bring it back: click **⇲ Dock** in the popup. The panel returns to its original splitscreen slot in the main window, with any per-panel changes you made in the popup (mastery, palette, camera smoothing, …) preserved.
+
+Just **closing** the popup window does *not* re-dock the panel — it stays removed (its slot already collapsed when you popped it out). If you want the panel back, use **⇲ Dock** rather than closing the window; once it's closed, pop a fresh one from the main layout.
 
 #### Splitting a popped window further
 
