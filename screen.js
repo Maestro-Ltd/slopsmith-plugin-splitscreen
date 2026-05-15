@@ -719,7 +719,7 @@
 
         const masteryHeading = document.createElement('span');
         masteryHeading.style.cssText = 'font-size:10px;color:#6b7280;white-space:nowrap;';
-        masteryHeading.textContent = 'Mastery';
+        masteryHeading.textContent = 'Difficulty';
         bar.appendChild(masteryHeading);
 
         const masterySlider = document.createElement('input');
