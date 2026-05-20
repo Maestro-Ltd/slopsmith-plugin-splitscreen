@@ -120,6 +120,67 @@
             .filter(k => k.startsWith('slopsmithViz_') && typeof window[k] === 'function')
             .map(k => ({ id: k.slice('slopsmithViz_'.length), name: k.slice('slopsmithViz_'.length) }));
     }
+
+    // Bounded poll for viz factories that register AFTER the picker is
+    // first built. /api/plugins returns metadata for every type:visualization
+    // plugin immediately, but each plugin's window.slopsmithViz_<id> factory
+    // only exists after the host has loaded and executed that plugin's
+    // screen.js. The host loads plugin scripts sequentially in loadPlugins()
+    // (alphabetical by directory). Two cases leave the picker missing
+    // entries when populateSelect() runs:
+    //   - Plugins alphabetically after 'splitscreen' (tab_view, tuner, …)
+    //     simply haven't been loaded yet when our IIFE runs.
+    //   - Async plugins (e.g. highway_3d's `await import(CDN)` for Three.js)
+    //     register their factory after their <script> onload fires, so even
+    //     an alphabetically-earlier plugin can lag.
+    // Without this watch, the picker stays incomplete until the user
+    // triggers another populateSelect (song change, layout change) — which
+    // is exactly why "split-then-unsplit in the popup" used to be the only
+    // way to surface the missing viz options.
+    const _seenVizFactoryIds = new Set();
+    let _vizFactoryWatchTimer = null;
+    function _startVizFactoryWatch() {
+        if (_vizFactoryWatchTimer) return;
+        // Seed with factories already present so the first tick only fires
+        // on factories that appear AFTER we start watching.
+        vizPlugins.forEach(vp => {
+            if (typeof window['slopsmithViz_' + vp.id] === 'function') {
+                _seenVizFactoryIds.add(vp.id);
+            }
+        });
+        const INTERVAL_MS = 200;
+        const MAX_TICKS = 60;       // ~12 s — covers slow async plugins
+        let ticks = 0;
+        _vizFactoryWatchTimer = setInterval(() => {
+            ticks++;
+            let added = false;
+            vizPlugins.forEach(vp => {
+                if (!_seenVizFactoryIds.has(vp.id) &&
+                    typeof window['slopsmithViz_' + vp.id] === 'function') {
+                    _seenVizFactoryIds.add(vp.id);
+                    added = true;
+                }
+            });
+            if (added) {
+                // Re-populate every live panel's picker so the new viz
+                // options become available. populateSelect honours each
+                // panel's vizMode / lyricsMode / jumpingTabMode + arrIndex,
+                // so the user's current selection is preserved across the
+                // rebuild.
+                panels.forEach(p => {
+                    if (p && p.select) populateSelect(p, p.arrIndex || 0);
+                });
+            }
+            const allPresent = vizPlugins.every(vp =>
+                typeof window['slopsmithViz_' + vp.id] === 'function'
+            );
+            if (allPresent || ticks >= MAX_TICKS) {
+                clearInterval(_vizFactoryWatchTimer);
+                _vizFactoryWatchTimer = null;
+            }
+        }, INTERVAL_MS);
+    }
+
     // Keep the promise so startSplitScreen / loadSongInFollower can await it —
     // panels are never populated before the list is ready even on a fast first
     // interaction.
@@ -1094,6 +1155,14 @@
                 panel.select.appendChild(opt);
             });
         });
+
+        // Any registered viz plugin whose factory hasn't loaded yet? Kick
+        // off the bounded poll so the picker auto-repopulates once their
+        // script registers window.slopsmithViz_<id>. Single-flight — cheap
+        // to call on every populateSelect.
+        if (vizPlugins.some(vp => typeof window['slopsmithViz_' + vp.id] !== 'function')) {
+            _startVizFactoryWatch();
+        }
     }
 
     function enterLyricsMode(panel) {
