@@ -9,9 +9,11 @@
      * ====================================================================== */
 
     const LAYOUTS = {
-        'top-bottom': { panels: 2, style: 'flex-col' },
-        'left-right': { panels: 2, style: 'flex-row' },
-        'quad':       { panels: 4, style: 'grid-2x2' },
+        'top-bottom':  { panels: 2, style: 'flex-col' },
+        'left-right':  { panels: 2, style: 'flex-row' },
+        'tri-top':     { panels: 3, style: 'grid-tri' },
+        'tri-bottom':  { panels: 3, style: 'grid-tri' },
+        'quad':        { panels: 4, style: 'grid-2x2' },
     };
 
     const OFF_CLASS = 'px-3 py-1.5 bg-dark-600 hover:bg-dark-500 rounded-lg text-xs text-gray-300 transition';
@@ -686,6 +688,12 @@
         } else if (layoutKey === 'left-right') {
             panelDiv.style.width = '50%';
             panelDiv.style.height = '100%';
+        } else if (layoutKey === 'tri-top') {
+            panelDiv.style.width = index === 0 ? '100%' : '50%';
+            panelDiv.style.height = '50%';
+        } else if (layoutKey === 'tri-bottom') {
+            panelDiv.style.width = index === 2 ? '100%' : '50%';
+            panelDiv.style.height = '50%';
         } else if (layoutKey === 'follower') {
             panelDiv.style.width = '100%';
             panelDiv.style.height = '100%';
@@ -2404,9 +2412,11 @@
             'background:#1a1a2e;border:1px solid #333;border-radius:6px;' +
             'padding:3px 6px;font-size:11px;color:#9ca3af;outline:none;display:none;';
         const options = [
-            { value: 'top-bottom', label: '⬒ Top/Bottom' },
-            { value: 'left-right', label: '⬓ Left/Right' },
-            { value: 'quad', label: '⊞ Quad' },
+            { value: 'top-bottom',  label: '⬒ Top/Bottom' },
+            { value: 'left-right',  label: '⬓ Left/Right' },
+            { value: 'tri-top',     label: '⊤ 1+2' },
+            { value: 'tri-bottom',  label: '⊥ 2+1' },
+            { value: 'quad',        label: '⊞ Quad' },
         ];
         for (const o of options) {
             const opt = document.createElement('option');
