@@ -4,7 +4,7 @@ A plugin for [Slopsmith](https://github.com/byrongamatos/slopsmith) that shows 2
 
 ## Features
 
-- **Three layouts** — Top/Bottom (2P), Left/Right (2P), and Quad (4P, 2×2 grid)
+- **Five layouts** — Top/Bottom (2P), Left/Right (2P), Tri 1+2 (3P, one on top + two on bottom), Tri 2+1 (3P, two on top + one on bottom), and Quad (4P, 2×2 grid)
 - **Per-panel arrangement selector** — each panel has its own dropdown; swap what it renders mid-playback without restarting the song
 - **Per-panel visualization picker** — each panel can independently run any installed `slopsmithViz` plugin (e.g. the 3D highway) alongside the default 2D highway
 - **Per-panel invert toggle** — flip individual panels between player and audience perspective independently
@@ -67,7 +67,7 @@ Every popup has a small toolbar pinned to its bottom edge with a **Layout** pick
 
 ## Settings
 
-Open **Settings → Split Screen** to pick the default layout (Top/Bottom, Left/Right, or Quad). The choice is stored in `localStorage` as `splitscreenLayout` and applies the next time you toggle split screen on.
+Open **Settings → Split Screen** to pick the default layout (Top/Bottom, Left/Right, Tri 1+2, Tri 2+1, or Quad). The choice is stored in `localStorage` as `splitscreenLayout` and applies the next time you toggle split screen on.
 
 ## Note Detection
 
