@@ -663,7 +663,11 @@
         wrap = document.createElement('div');
         wrap.id = 'splitscreen-wrap';
         const controls = document.getElementById('player-controls');
-        player.insertBefore(wrap, controls);
+        if (controls && controls.parentNode === player) {
+            player.insertBefore(wrap, controls);
+        } else {
+            player.appendChild(wrap);
+        }
         return wrap;
     }
 
