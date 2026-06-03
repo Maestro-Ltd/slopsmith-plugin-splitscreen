@@ -9,11 +9,13 @@
      * ====================================================================== */
 
     const LAYOUTS = {
-        'top-bottom':  { panels: 2, style: 'flex-col' },
-        'left-right':  { panels: 2, style: 'flex-row' },
-        'tri-top':     { panels: 3, style: 'grid-tri' },
-        'tri-bottom':  { panels: 3, style: 'grid-tri' },
-        'quad':        { panels: 4, style: 'grid-2x2' },
+        'top-bottom': { panels: 2, cols: 1, rows: 2, style: 'flex-col' },
+        'left-right': { panels: 2, cols: 2, rows: 1, style: 'flex-row' },
+        'triple':     { panels: 3, cols: 3, rows: 1, style: 'flex-row' },
+        'triple-t':   { panels: 3, cols: 1, rows: 3, style: 'flex-col' },
+        'quad':       { panels: 4, cols: 2, rows: 2, style: 'grid-2x2' },
+        'five':       { panels: 5, cols: 3, rows: 2, style: 'grid-3x2' },
+        'six':        { panels: 6, cols: 3, rows: 2, style: 'grid-3x2' },
     };
 
     const OFF_CLASS = 'px-3 py-1.5 bg-dark-600 hover:bg-dark-500 rounded-lg text-xs text-gray-300 transition';
@@ -450,7 +452,7 @@
     }
 
     function getDefaultArrangements(count) {
-        // Assign arrangements intelligently: lead, rhythm, bass, then wrap
+        // Assign arrangements intelligently: lead, rhythm, bass, keys/piano, drums, then wrap
         const defaults = [];
         const byName = {};
         arrangements.forEach((a, i) => {
@@ -458,8 +460,10 @@
             if (n.includes('lead') && !byName.lead) byName.lead = i;
             else if (n.includes('rhythm') && !byName.rhythm) byName.rhythm = i;
             else if (n.includes('bass') && !byName.bass) byName.bass = i;
+            else if ((n.includes('key') || n.includes('piano')) && !byName.keys) byName.keys = i;
+            else if (n.includes('drum') && !byName.drums) byName.drums = i;
         });
-        const order = [byName.lead, byName.rhythm, byName.bass].filter(i => i !== undefined);
+        const order = [byName.lead, byName.rhythm, byName.bass, byName.keys, byName.drums].filter(i => i !== undefined);
         // Fill remaining with whatever's available
         for (let i = 0; i < arrangements.length; i++) {
             if (!order.includes(i)) order.push(i);
@@ -667,13 +671,12 @@
         // Note: bottom is set dynamically by sizeCanvases() to leave room for global controls
         container.style.cssText =
             'position:absolute;top:0;left:0;right:0;z-index:3;display:flex;';
-        if (layoutKey === 'top-bottom') {
+        const cfg = LAYOUTS[layoutKey];
+        if (!cfg || cfg.cols === 1) {
             container.style.flexDirection = 'column';
-        } else if (layoutKey === 'left-right') {
-            container.style.flexDirection = 'row';
         } else {
             container.style.flexDirection = 'row';
-            container.style.flexWrap = 'wrap';
+            if (cfg.rows > 1) container.style.flexWrap = 'wrap';
         }
     }
 
@@ -682,24 +685,17 @@
         panelDiv.className = 'splitscreen-panel';
         panelDiv.style.cssText = 'position:relative;overflow:hidden;box-sizing:border-box;border:1px solid #333;';
 
-        if (layoutKey === 'quad') {
-            panelDiv.style.width = '50%';
-            panelDiv.style.height = '50%';
-        } else if (layoutKey === 'left-right') {
-            panelDiv.style.width = '50%';
-            panelDiv.style.height = '100%';
-        } else if (layoutKey === 'tri-top') {
-            panelDiv.style.width = index === 0 ? '100%' : '50%';
-            panelDiv.style.height = '50%';
-        } else if (layoutKey === 'tri-bottom') {
-            panelDiv.style.width = index === 2 ? '100%' : '50%';
-            panelDiv.style.height = '50%';
-        } else if (layoutKey === 'follower') {
+        if (layoutKey === 'follower') {
             panelDiv.style.width = '100%';
             panelDiv.style.height = '100%';
+        } else if (layoutKey === 'five') {
+            // Top row: 2 wide panels; bottom row: 3 narrow panels
+            panelDiv.style.width = index < 2 ? '50%' : `${(100 / 3).toFixed(4)}%`;
+            panelDiv.style.height = '50%';
         } else {
-            panelDiv.style.width = '100%';
-            panelDiv.style.height = '50%';
+            const cfg = LAYOUTS[layoutKey] || LAYOUTS['top-bottom'];
+            panelDiv.style.width = `${(100 / cfg.cols).toFixed(4)}%`;
+            panelDiv.style.height = `${(100 / cfg.rows).toFixed(4)}%`;
         }
 
         const canvas = document.createElement('canvas');
@@ -2412,11 +2408,13 @@
             'background:#1a1a2e;border:1px solid #333;border-radius:6px;' +
             'padding:3px 6px;font-size:11px;color:#9ca3af;outline:none;display:none;';
         const options = [
-            { value: 'top-bottom',  label: '⬒ Top/Bottom' },
-            { value: 'left-right',  label: '⬓ Left/Right' },
-            { value: 'tri-top',     label: '⊤ 1+2' },
-            { value: 'tri-bottom',  label: '⊥ 2+1' },
-            { value: 'quad',        label: '⊞ Quad' },
+            { value: 'top-bottom', label: '⬒ Top/Bottom' },
+            { value: 'left-right', label: '⬓ Left/Right' },
+            { value: 'triple',     label: '⊣ Triple Row' },
+            { value: 'triple-t',   label: '⊤ Triple Col' },
+            { value: 'quad',       label: '⊞ Quad' },
+            { value: 'five',       label: '⊟ Five' },
+            { value: 'six',        label: '⊠ Six' },
         ];
         for (const o of options) {
             const opt = document.createElement('option');
