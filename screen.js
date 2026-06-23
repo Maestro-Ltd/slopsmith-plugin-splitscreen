@@ -29,7 +29,16 @@
 
     let active = false;
     let controlsHidden = false;
+    // Migrate renamed layout keys (tri-top→triple, tri-bottom→triple-t, added in a49428c)
+    const _LAYOUT_RENAMES = { 'tri-top': 'triple', 'tri-bottom': 'triple-t' };
+    (function _migrateLayoutKey() {
+        const saved = localStorage.getItem('splitscreenLayout');
+        if (saved && _LAYOUT_RENAMES[saved]) {
+            localStorage.setItem('splitscreenLayout', _LAYOUT_RENAMES[saved]);
+        }
+    })();
     let layout = localStorage.getItem('splitscreenLayout') || 'top-bottom';
+    if (!LAYOUTS[layout]) layout = 'top-bottom';
     let alwaysSplit = localStorage.getItem('splitscreenAlwaysSplit') === 'true';
     let panels = [];       // { hw, canvas, ws, arrIndex, controls }
     let wrap = null;
