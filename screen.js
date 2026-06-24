@@ -1964,10 +1964,11 @@
             stopSplitScreen();
             return;
         }
-        // 2+ remaining. Downgrade quad → top-bottom if we'd otherwise leave
-        // an empty default slot. Keep top-bottom / left-right as-is.
-        if (wasActive && LAYOUTS[layout] && savedPrefs.length < LAYOUTS[layout].panels) {
-            layout = 'top-bottom';
+        // 2+ remaining. If the current layout has more slots than panels left,
+        // downgrade to the largest layout that fits — not blindly to top-bottom.
+        if (wasActive && LAYOUTS[layout] && savedPrefs.length !== LAYOUTS[layout].panels) {
+            const fit = Object.keys(LAYOUTS).find(k => LAYOUTS[k].panels === savedPrefs.length);
+            layout = fit || 'top-bottom';
             try { localStorage.setItem('splitscreenLayout', layout); } catch (_) {}
         }
         if (wasActive) {
