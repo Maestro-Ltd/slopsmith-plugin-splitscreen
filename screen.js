@@ -1227,8 +1227,7 @@
         panel.masteryLabel.style.display = '';
         panel.lyricsMode = false;
 
-        panel.hw.init(panel.canvas);
-        panel.hw.resize();
+        recreatePanelHighway(panel);
         panel.arrIndex = arrIndex;
         panel.arrName.textContent = arrangements[arrIndex]?.name || '';
         hookPanelReady(panel);
@@ -1295,8 +1294,7 @@
         panel.masteryLabel.style.display = '';
         panel.jumpingTabMode = false;
 
-        panel.hw.init(panel.canvas);
-        panel.hw.resize();
+        recreatePanelHighway(panel);
         panel.arrIndex = arrIndex;
         panel.arrName.textContent = arrangements[arrIndex]?.name || '';
         hookPanelReady(panel);
