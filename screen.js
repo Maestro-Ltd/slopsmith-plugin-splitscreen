@@ -13,9 +13,9 @@
         'left-right': { panels: 2, cols: 2, rows: 1, style: 'flex-row' },
         'triple':     { panels: 3, cols: 3, rows: 1, style: 'flex-row' },
         'triple-t':   { panels: 3, cols: 1, rows: 3, style: 'flex-col' },
-        'quad':       { panels: 4, cols: 2, rows: 2, style: 'grid-2x2' },
+        'quad':       { panels: 4, cols: 2, rows: 2, style: 'grid' },
         'five':       { panels: 5, cols: 3, rows: 2, style: 'grid-3x2' },
-        'six':        { panels: 6, cols: 3, rows: 2, style: 'grid-3x2' },
+        'six':        { panels: 6, cols: 3, rows: 2, style: 'grid' },
     };
 
     const OFF_CLASS = 'px-3 py-1.5 bg-dark-600 hover:bg-dark-500 rounded-lg text-xs text-gray-300 transition';
@@ -682,14 +682,24 @@
 
     function applyLayoutStyle(container, layoutKey) {
         // Note: bottom is set dynamically by sizeCanvases() to leave room for global controls
-        container.style.cssText =
-            'position:absolute;top:0;left:0;right:0;z-index:3;display:flex;';
         const cfg = LAYOUTS[layoutKey];
-        if (!cfg || cfg.cols === 1) {
-            container.style.flexDirection = 'column';
+        if (cfg && cfg.style === 'grid') {
+            // CSS grid avoids the flex % height resolution ambiguity that causes
+            // bottom-row panels to collapse in some browsers when the container's
+            // height comes from position insets rather than an explicit height prop.
+            container.style.cssText =
+                'position:absolute;top:0;left:0;right:0;z-index:3;display:grid;' +
+                'grid-template-columns:repeat(' + cfg.cols + ',1fr);' +
+                'grid-template-rows:repeat(' + cfg.rows + ',1fr);';
         } else {
-            container.style.flexDirection = 'row';
-            if (cfg.rows > 1) container.style.flexWrap = 'wrap';
+            container.style.cssText =
+                'position:absolute;top:0;left:0;right:0;z-index:3;display:flex;';
+            if (!cfg || cfg.cols === 1) {
+                container.style.flexDirection = 'column';
+            } else {
+                container.style.flexDirection = 'row';
+                if (cfg.rows > 1) container.style.flexWrap = 'wrap';
+            }
         }
     }
 
@@ -698,15 +708,21 @@
         panelDiv.className = 'splitscreen-panel';
         panelDiv.style.cssText = 'position:relative;overflow:hidden;box-sizing:border-box;border:1px solid #333;';
 
+        const _cfg = LAYOUTS[layoutKey];
         if (layoutKey === 'follower') {
             panelDiv.style.width = '100%';
             panelDiv.style.height = '100%';
+        } else if (_cfg && _cfg.style === 'grid') {
+            // CSS grid sizes the cells — no explicit width/height needed on the item.
+            // min-width/min-height:0 prevents content from overflowing the cell.
+            panelDiv.style.minWidth = '0';
+            panelDiv.style.minHeight = '0';
         } else if (layoutKey === 'five') {
             // Top row: 2 wide panels; bottom row: 3 narrow panels
             panelDiv.style.width = index < 2 ? '50%' : `${(100 / 3).toFixed(4)}%`;
             panelDiv.style.height = '50%';
         } else {
-            const cfg = LAYOUTS[layoutKey] || LAYOUTS['top-bottom'];
+            const cfg = _cfg || LAYOUTS['top-bottom'];
             panelDiv.style.width = `${(100 / cfg.cols).toFixed(4)}%`;
             panelDiv.style.height = `${(100 / cfg.rows).toFixed(4)}%`;
         }
@@ -1964,10 +1980,11 @@
             stopSplitScreen();
             return;
         }
-        // 2+ remaining. Downgrade quad → top-bottom if we'd otherwise leave
-        // an empty default slot. Keep top-bottom / left-right as-is.
-        if (wasActive && LAYOUTS[layout] && savedPrefs.length < LAYOUTS[layout].panels) {
-            layout = 'top-bottom';
+        // 2+ remaining. If the current layout has more slots than panels left,
+        // downgrade to the largest layout that fits — not blindly to top-bottom.
+        if (wasActive && LAYOUTS[layout] && savedPrefs.length !== LAYOUTS[layout].panels) {
+            const fit = Object.keys(LAYOUTS).find(k => LAYOUTS[k].panels === savedPrefs.length);
+            layout = fit || 'top-bottom';
             try { localStorage.setItem('splitscreenLayout', layout); } catch (_) {}
         }
         if (wasActive) {
@@ -3098,9 +3115,9 @@
             followerWrap.style.display = 'flex';
             followerWrap.style.flexDirection = 'row';
         } else if (layoutKey === 'quad') {
-            followerWrap.style.display = 'flex';
-            followerWrap.style.flexDirection = 'row';
-            followerWrap.style.flexWrap = 'wrap';
+            followerWrap.style.display = 'grid';
+            followerWrap.style.gridTemplateColumns = 'repeat(2,1fr)';
+            followerWrap.style.gridTemplateRows = 'repeat(2,1fr)';
         }
         // else: single (follower) — leave as block layout (no flex).
         document.body.appendChild(followerWrap);
