@@ -391,7 +391,6 @@
                 ? VIZ_PREFIX + ':' + p.vizMode + ':' + (arrangements[p.arrIndex]?.name || '')
                 : p.lyricsMode ? LYRICS_VALUE : (arrangements[p.arrIndex]?.name || ''),
             lyrics: !!p.lyricsOverlayOn,
-            inverted: p.hw.getInverted(),
             lefty: p.hw.getLefty(),
             detectChannel: p.detectChannel || 'mono',
             barHidden: p.bar.style.display === 'none',
@@ -1464,7 +1463,6 @@
 
         // Apply saved preferences
         if (prefs && !isLyricsMode && !isJumpingTabMode) {
-            if (prefs.inverted !== undefined) panel.hw.setInverted(prefs.inverted);
             if (prefs.lefty !== undefined) panel.hw.setLefty(prefs.lefty);
             if (prefs.lyrics !== undefined && typeof panel.hw.setLyricsVisible === 'function') {
                 panel.hw.setLyricsVisible(prefs.lyrics);
