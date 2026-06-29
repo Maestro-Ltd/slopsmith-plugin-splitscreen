@@ -1,14 +1,21 @@
 # Slopsmith Plugin: Split Screen
 
-A plugin for [Slopsmith](https://github.com/byrongamatos/slopsmith) that shows 2–4 highway panels side-by-side during playback, each rendering a different arrangement of the same song. Practice lead and rhythm at once, watch bass against lead, or run a quad view of every arrangement a song has.
+A plugin for [Slopsmith](https://github.com/byrongamatos/slopsmith) that shows 2–6 highway panels side-by-side during playback, each rendering a different arrangement of the same song. Practice lead and rhythm at once, watch bass against lead, or run a quad view of every arrangement a song has.
 
 ## Features
 
-- **Five layouts** — Top/Bottom (2P), Left/Right (2P), Tri 1+2 (3P, one on top + two on bottom), Tri 2+1 (3P, two on top + one on bottom), and Quad (4P, 2×2 grid)
+- **Seven layouts** — Top/Bottom (2P), Left/Right (2P), Triple horizontal (3P), Triple vertical (3P), Quad (4P, 2×2 grid), Five (5P, 3×2 grid), and Six (6P, 3×2 grid)
 - **Per-panel arrangement selector** — each panel has its own dropdown; swap what it renders mid-playback without restarting the song
 - **Per-panel visualization picker** — each panel can independently run any installed `slopsmithViz` plugin (e.g. the 3D highway) alongside the default 2D highway
+- **Per-panel viz settings** — when a panel is running a viz renderer that exposes per-panel controls (e.g. 3D Highway's palette and camera settings), a **3D ⚙** button opens a popover with those controls scoped to just that panel; other panels are unaffected
+- **Per-panel lyrics overlay** — click **Lyrics** on any panel to toggle a translucent karaoke band over the renderer (works in 2D highway, 3D highway, and other viz modes — anything that owns the canvas)
+- **Per-panel tab view** — click **Tab** on any panel to overlay a scrolling guitar tab above the highway; pairs with the [Tab View plugin](https://github.com/byrongamatos/slopsmith-plugin-tabview)
+- **Lyrics pane mode** — select "Lyrics" from a panel's arrangement dropdown to replace that panel with a full-size karaoke renderer (no highway underneath)
+- **Jumping Tab pane mode** — select "Jumping Tab" from a panel's arrangement dropdown to replace that panel with the jumping tab renderer; pairs with the [Jumping Tab plugin](https://github.com/renanboni/slopsmith-plugin-jumpingtab)
 - **Per-panel invert toggle** — flip individual panels between player and audience perspective independently
-- **Per-panel note detection** — each panel can independently detect notes from a specific audio input channel; pairs with the [Note Detect](https://github.com/byrongamatos/slopsmith-plugin-notedetect) plugin for multi-guitar setups
+- **Per-panel lefty toggle** — switch individual panels to left-handed mode independently
+- **Per-panel mastery** — adjust the difficulty/master fraction (0 = easy, 1 = full chart) per panel; lets you practice an easier version on one panel while watching the full chart on another
+- **Per-panel note detection** — each panel can independently detect notes from a specific audio input channel; pairs with the [Note Detect](https://github.com/topkoa/slopsmith-plugin-notedetect) plugin for multi-guitar setups
 - **Pop a panel into its own window** — click **⇱ Pop** on any panel to open it in a new browser window; drag it to a second monitor and resize it freely. The popup is muted and paused (it doesn't even decode the audio) and slaved to the main window's audio time, so there's still only one sound source. Click **⇲ Dock** to send the panel back to its splitscreen slot; just closing the popup window instead removes that panel.
 - **Split a popped window internally** — every popup gets its own bottom toolbar with a layout picker (Single / Top-Bottom / Left-Right / Quad). A popped window can mirror the same layouts as the main splitter, so you can run e.g. a quad on a second monitor with all four arrangements while the main window stays single-panel.
 - **Hide/show bottom controls bar** — click **▾ Bar** (next to Close) to collapse the global player controls and reclaim the vertical space; a floating **▴ Controls** pill restores them
@@ -16,7 +23,8 @@ A plugin for [Slopsmith](https://github.com/byrongamatos/slopsmith) that shows 2
 - **Smart defaults** — opens with lead → rhythm → bass auto-assigned across panels when those arrangements exist, wrapping to fill the rest
 - **Single shared audio** — all panels slave to the core `<audio>` element, so there's only one sound source and no drift between views
 - **Live layout switching** — change layout from the player toolbar without reloading the song; existing arrangement selections are preserved when panel counts match
-- **Persistent settings** — layout, per-panel arrangements, invert state, bar visibility, and controls bar visibility are all saved to `localStorage` and restored on the next visit
+- **Always Split** — opt into auto-entering split screen on every song load (Settings → Split Screen)
+- **Persistent settings** — layout, per-panel arrangements, invert/lefty/mastery state, bar visibility, and controls bar visibility are all saved to `localStorage` and restored on the next visit
 
 ## Installation
 
@@ -32,8 +40,18 @@ docker compose restart
 
 1. Open any song in the player.
 2. Click the **Split** button in the player toolbar to activate. The highway is replaced by your configured layout of panels.
-3. Use each panel's dropdown to pick which arrangement it shows. Click **Invert** on a panel to flip just that one.
-4. Click **Split** again to return to the single-highway view.
+3. Use each panel's dropdown to pick which arrangement (or mode) it shows:
+   - Any numbered arrangement → 2D highway for that part
+   - Any arrangement with a viz renderer suffix → runs that viz plugin (e.g. 3D highway)
+   - **Lyrics** → full-size karaoke pane (no highway)
+   - **Jumping Tab** → full-size jumping tab pane (requires the Jumping Tab plugin)
+4. Use the per-panel buttons in the mini bar to adjust individual panels:
+   - **Invert** — flip player ↔ audience perspective
+   - **Lefty** — switch to left-handed mode
+   - **Lyrics** — toggle a translucent karaoke overlay above the renderer
+   - **Tab** — toggle a scrolling guitar tab overlay (requires the Tab View plugin)
+   - **Mastery** — adjust the difficulty fraction (shown as a slider or numeric field)
+5. Click **Split** again to return to the single-highway view.
 
 Split screen works with both PSARC and `.sloppak` songs — any song with more than one arrangement benefits.
 
@@ -67,11 +85,14 @@ Every popup has a small toolbar pinned to its bottom edge with a **Layout** pick
 
 ## Settings
 
-Open **Settings → Split Screen** to pick the default layout (Top/Bottom, Left/Right, Tri 1+2, Tri 2+1, or Quad). The choice is stored in `localStorage` as `splitscreenLayout` and applies the next time you toggle split screen on.
+Open **Settings → Split Screen** to configure:
+
+- **Default layout** — Top/Bottom, Left/Right, Triple (horizontal or vertical), Quad, Five, or Six. Stored as `splitscreenLayout` and applied the next time you toggle split screen on.
+- **Always Split** — when checked, split screen activates automatically every time you load a song (no need to click the Split button). Stored as `splitscreenAlwaysSplit`.
 
 ## Note Detection
 
-Each panel can independently detect the notes you're playing and score your accuracy in real time. This requires the [Note Detect plugin](https://github.com/byrongamatos/slopsmith-plugin-notedetect) to be installed.
+Each panel can independently detect the notes you're playing and score your accuracy in real time. This requires the [Note Detect plugin](https://github.com/topkoa/slopsmith-plugin-notedetect) to be installed.
 
 ### Single input
 
@@ -260,6 +281,17 @@ Messages arrive in the order listed above. Do not start rendering until you rece
 
 - Slopsmith with the highway factory (`createHighway()`) and `setRenderer` support exposed on `window` — available in all recent builds (slopsmith#36)
 - A song with ≥2 arrangements to see any benefit; 1-arrangement songs simply render the same view in every panel
+
+### Optional plugin dependencies
+
+| Feature | Plugin |
+|---------|--------|
+| Tab overlay / Tab pane | [Tab View](https://github.com/byrongamatos/slopsmith-plugin-tabview) |
+| Jumping Tab pane | [Jumping Tab](https://github.com/renanboni/slopsmith-plugin-jumpingtab) |
+| Note detection | [Note Detect](https://github.com/topkoa/slopsmith-plugin-notedetect) |
+| 3D highway renderer | [3D Highway](https://github.com/byrongamatos/slopsmith-plugin-3dhighway) |
+
+Each optional plugin is detected at runtime; its dropdown entries and buttons are hidden if the plugin isn't installed.
 
 ## Other Plugins
 
