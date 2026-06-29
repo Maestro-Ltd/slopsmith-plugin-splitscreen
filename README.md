@@ -138,7 +138,7 @@ window.slopsmithViz_my_viz = function () {
 
 Split screen automatically populates each panel's dropdown with this option and calls `panel.hw.setRenderer(factory())` when selected. **No changes to split screen's code are needed.** Each panel gets an independent renderer instance; the highway provides note data, timing, and the RAF loop.
 
-See the [CLAUDE.md plugin guide](https://github.com/byrongamatos/slopsmith/blob/main/CLAUDE.md) for the full `setRenderer` lifecycle and bundle shape. The [3D Highway plugin](https://github.com/byrongamatos/slopsmith-plugin-3dhighway) is a reference implementation.
+See the [CLAUDE.md plugin guide](https://github.com/carochacs/slopsmith/blob/main/CLAUDE.md) for the full `setRenderer` lifecycle and bundle shape. The [3D Highway plugin](https://github.com/byrongamatos/slopsmith-plugin-3dhighway) is a reference implementation.
 
 ### Path 2: Pane plugins (own canvas + own WebSocket)
 
