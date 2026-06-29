@@ -319,4 +319,4 @@ Each optional plugin is detected at runtime; its dropdown entries and buttons ar
 
 ## License
 
-MIT
+[MIT](LICENSE.txt)
