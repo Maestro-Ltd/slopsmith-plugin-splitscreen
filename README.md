@@ -2,6 +2,16 @@
 
 A plugin for [Slopsmith](https://github.com/byrongamatos/slopsmith) that shows 2–6 highway panels side-by-side during playback, each rendering a different arrangement of the same song. Practice lead and rhythm at once, watch bass against lead, or run a quad view of every arrangement a song has.
 
+## Quick Start
+
+1. Install and restart (see [Installation](#installation) below).
+2. Open any song in the player.
+3. Click the **Split** button in the player toolbar — the highway splits into panels.
+4. Use each panel's dropdown to pick which arrangement it shows.
+5. Click **Split** again to return to the normal view.
+
+That's it. The full feature list and advanced options are below.
+
 ## Features
 
 - **Seven layouts** — Top/Bottom (2P), Left/Right (2P), Triple horizontal (3P), Triple vertical (3P), Quad (4P, 2×2 grid), Five (5P, 3×2 grid), and Six (6P, 3×2 grid)
@@ -28,11 +38,20 @@ A plugin for [Slopsmith](https://github.com/byrongamatos/slopsmith) that shows 2
 
 ## Installation
 
+**Docker (web version)**
 ```bash
 cd /path/to/slopsmith/plugins
 git clone https://github.com/topkoa/slopsmith-plugin-splitscreen.git splitscreen
 docker compose restart
 ```
+
+**Desktop app** — clone into the platform plugins directory and restart the app:
+
+| Platform | Plugins directory |
+|----------|-------------------|
+| Windows  | `%APPDATA%\slopsmith-desktop\plugins\` |
+| macOS    | `~/Library/Application Support/slopsmith-desktop/plugins/` |
+| Linux    | `~/.config/slopsmith-desktop/plugins/` |
 
 **Compatibility** — splitscreen runs on any Slopsmith core. On cores with the `highway:visibility` plugin API (~0.2.7.1+), a visualization plugin that mounts a sibling overlay — e.g. the 3D Highway's WebGL overlay — hides itself cleanly while splitscreen is active. On older cores that overlay may bleed through the panels; update the core (and the 3D Highway plugin) to fix it.
 
