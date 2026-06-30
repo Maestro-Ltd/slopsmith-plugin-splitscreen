@@ -53,7 +53,7 @@
 - [x] **DONE** Detect main-closed and self-dismiss — `_onFollowerOrphaned()`
   shows overlay; triggered by `main-closed` BroadcastChannel msg from
   main's `beforeunload` handler. See clarify.md Q10.
-- [ ] **OPEN [P]** "Dock all" affordance in main window.
+- [x] **DONE** "Dock all" button in main window: `createDockAllBtn()` injects `⇲ Dock all` into `#player-controls` (visible only when popups exist); click broadcasts `{type:'dock-all-request'}` via `_ssChannel()`; follower windows handle it in their BroadcastChannel `onmessage` by calling `dockFollowerPanel(panels[0])`. `updateBtn()` is called at every `popups` mutation (set, delete from crash-reap and `closed` msg, delete in `_redockPanel`) to keep visibility in sync.
 
 ## US-7: Layouts inside the popup
 
