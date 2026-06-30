@@ -50,7 +50,9 @@
 - [x] **DONE** Popup muted.
 - [x] **DONE** Dock returns panel to original slot.
 - [x] **DONE** Popup auto-follows when main loads a different song.
-- [ ] **OPEN [P]** Detect main-closed and self-dismiss (clarify Q10).
+- [x] **DONE** Detect main-closed and self-dismiss — `_onFollowerOrphaned()`
+  shows overlay; triggered by `main-closed` BroadcastChannel msg from
+  main's `beforeunload` handler. See clarify.md Q10.
 - [ ] **OPEN [P]** "Dock all" affordance in main window.
 
 ## US-7: Layouts inside the popup
@@ -80,7 +82,9 @@
 - [x] **DONE** Idempotent `playSong` / `showScreen` wrappers.
 - [x] **DONE** `sizeCanvases` is the single resize entry.
 - [x] **DONE** `onSongInfo: () => {}` on every panel WS.
-- [ ] **OPEN [P]** Explicit plugin load-order metadata (clarify Q9).
+- [x] **DONE** Explicit plugin load-order metadata (clarify Q9) — resolved
+  as "won't implement now": 200ms poll fallback makes the race benign;
+  core-level sort requires broader ecosystem change. See clarify.md Q9.
 
 ## Spec-kit hygiene
 
