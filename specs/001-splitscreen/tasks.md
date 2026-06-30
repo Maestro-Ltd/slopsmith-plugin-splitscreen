@@ -74,8 +74,12 @@
 - [x] **DONE** README "Path 1" auto-discovery for visualization
   plugins via `slopsmithViz_<id>()`.
 - [x] **DONE** README "Path 2" pane-plugin contract documented.
-- [ ] **OPEN [P]** Add a runtime self-test page that exercises both
-  paths.
+- [x] **DONE** Add logic unit tests — `tests/test_splitscreen_logic.js`
+  (18 cases): `resolveArrIndex` (6), `getDefaultArrangements` (6),
+  `migratePanelPrefs` (6). Covers sentinel detection, smart-assignment
+  ordering, wraparound, prefs migration (v<2 lyrics reset, legacy
+  `__3d_highway__` → `__viz__` rename, immutability). Run with
+  `node tests/test_splitscreen_logic.js`.
 
 ## Robustness
 
