@@ -239,6 +239,20 @@ window.createMyVisualization = function ({ container }) {
 | **Handle `resize()` properly** | Called on layout changes and window resizes. Update your canvas backing store respecting `devicePixelRatio`. |
 | **No arrangement assumptions** | `connect()` receives an arrangement index — honor it. |
 
+#### Reserved sentinel values
+
+Split screen uses sentinel strings as dropdown option values and preference keys to distinguish special panel modes from plain arrangement indices. When adding a new pane plugin you must **not** clash with these:
+
+| Sentinel | Where used | Meaning |
+|----------|-----------|---------|
+| `__lyrics__` | select `value`, `arrName` pref | Built-in lyrics-only pane |
+| `__jumping_tab__` | select `value` prefix (`__jumping_tab__:<arrIndex>`), `arrName` pref (`__jumping_tab__:<arrName>`) | Jumping Tab pane (external plugin) |
+| `__viz__` | select `value` prefix (`__viz__:<pluginId>:<arrIndex>`), `arrName` pref (`__viz__:<pluginId>:<arrName>`) | Any `type: "visualization"` plugin rendered via `setRenderer` |
+
+**Rule:** choose a sentinel that starts with `__` and ends with `__` and is unique to your plugin, e.g. `__my_plugin__`. Values that don't start with `__` are interpreted as plain arrangement names and will be treated as a named arrangement lookup, not a mode switch.
+
+`resolveArrIndex()` in `screen.js` already returns `-1` for all known sentinels; add your own sentinel prefix there too so the function short-circuits correctly instead of trying to match it against arrangement names.
+
 #### Registering a pane plugin with split screen
 
 Pane plugins require a small integration in split screen's `screen.js` (unlike viz plugins, which are auto-discovered). The pattern:
