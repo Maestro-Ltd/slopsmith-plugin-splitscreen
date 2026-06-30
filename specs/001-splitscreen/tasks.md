@@ -22,8 +22,10 @@
   factory.
 - [x] **DONE** `enter*Mode` / `exit*Mode` for each mode.
 - [x] **DONE** Mode exclusivity (constitution §VIII).
-- [ ] **OPEN [P]** Document the sentinel-value protocol in README
-  more prominently for plugin authors.
+- [x] **DONE** Document the sentinel-value protocol in README
+  more prominently for plugin authors — added "Sentinel values" subsection
+  in "Path 2: Pane plugins" with a built-in values table, select-vs-pref
+  format rule, and updated registration step 5 (resolveArrIndex).
 
 ## US-4: Per-panel toggles
 
