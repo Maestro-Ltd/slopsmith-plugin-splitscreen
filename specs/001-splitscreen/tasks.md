@@ -13,7 +13,7 @@
 - [x] **DONE** `createLayoutBtn` + select handler.
 - [x] **DONE** `rebuildLayout` with `captureCurrentPrefs` carry-over.
 - [x] **DONE** Persistent `splitscreenLayout` key.
-- [ ] **OPEN [P]** Animated transition between layouts.
+- [x] **DONE** Animated transition between layouts: `rebuildLayout()` fades out `wrap` over 130ms before teardown; `createWrap()` starts new wrap at `opacity:0`; `startSplitScreen()` fades it in once panels are ready (CSS `transition: opacity 0.15s ease-in`). Prevents jarring instant cut when switching Top/Bottom ↔ Left/Right ↔ Quad.
 
 ## US-3: Per-panel renderer
 
