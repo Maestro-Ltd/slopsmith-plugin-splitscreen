@@ -391,7 +391,6 @@
                 ? VIZ_PREFIX + ':' + p.vizMode + ':' + (arrangements[p.arrIndex]?.name || '')
                 : p.lyricsMode ? LYRICS_VALUE : (arrangements[p.arrIndex]?.name || ''),
             lyrics: !!p.lyricsOverlayOn,
-            inverted: p.hw.getInverted(),
             lefty: p.hw.getLefty(),
             detectChannel: p.detectChannel || 'mono',
             barHidden: p.bar.style.display === 'none',
@@ -1464,7 +1463,6 @@
 
         // Apply saved preferences
         if (prefs && !isLyricsMode && !isJumpingTabMode) {
-            if (prefs.inverted !== undefined) panel.hw.setInverted(prefs.inverted);
             if (prefs.lefty !== undefined) panel.hw.setLefty(prefs.lefty);
             if (prefs.lyrics !== undefined && typeof panel.hw.setLyricsVisible === 'function') {
                 panel.hw.setLyricsVisible(prefs.lyrics);
@@ -2429,7 +2427,7 @@
         if (layoutBtn) return layoutBtn;
         const c = document.getElementById('player-controls');
         if (!c) return null;
-        const separator = c.querySelector('span.text-gray-700');
+        const separator = document.getElementById('player-controls-separator') || c.querySelector('span.text-gray-700');
         layoutBtn = document.createElement('select');
         layoutBtn.id = 'splitscreen-layout-btn';
         layoutBtn.style.cssText =
@@ -2610,7 +2608,7 @@
         c.style.position = 'relative';
         c.style.zIndex = '10';
         if (document.getElementById('btn-splitscreen')) return;
-        const separator = c.querySelector('span.text-gray-700');
+        const separator = document.getElementById('player-controls-separator') || c.querySelector('span.text-gray-700');
         const b = document.createElement('button');
         b.id = 'btn-splitscreen';
         b.className = OFF_CLASS;
