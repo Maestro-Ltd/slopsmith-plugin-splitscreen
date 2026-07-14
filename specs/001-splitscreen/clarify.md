@@ -62,15 +62,28 @@ background) by index.
 **A**: Screen.js files load alphabetically. Plugins that wrap
 `playSong` before splitscreen run closer to the original; later
 loaders run first. This affects when `_onReady` is hooked and
-whether the poll fallback is needed
-(CLAUDE.md "Common pitfalls"). [NEEDS CLARIFICATION: would explicit
-load-order metadata in `plugin.json` help here?]
+whether the poll fallback is needed (CLAUDE.md "Common pitfalls").
+
+**Resolution**: Explicit load-order metadata (`requires`, `after`, or
+`priority` fields) would let core topologically sort scripts, but it's
+a core change with broad ecosystem impact. The 200ms poll (6s budget,
+`handled=true` guard) already makes the race benign — the cost is at
+most ~200ms extra startup latency when a slow async plugin (e.g.
+3dhighway CDN load) wins the race. Since the workaround is cheap and
+reliable, explicit metadata is deferred until a real-world ordering
+failure is reported. Document the poll fallback in CLAUDE.md (done).
 
 ## Q10: What happens to popups when the main window closes?
-**A**: They freeze. There is no time source on the BroadcastChannel.
-Users must close popups manually (README:62).
-[NEEDS CLARIFICATION: should the popup detect main-closed and
-self-dismiss?]
+**A**: **Implemented.** The main window posts `{type:'main-closed'}`
+on `BroadcastChannel('slopsmith-ss')` from a `beforeunload` handler
+(`screen.js:2643–2646`). Popups receive it in the channel's
+`onmessage` handler (`screen.js:3190–3191`) and call
+`_onFollowerOrphaned()` (`screen.js:2882`), which: stops time
+interpolation, tears down all panels, removes the follower toolbar/
+toasts, and shows a full-screen "Main Slopsmith window closed — you
+can close this window" overlay. This is best-effort (browser may
+throttle `beforeunload` posts when the main tab crashes hard), but
+covers the normal close path including tab-close and browser-close.
 
 ## Q11: How is `currentFilename` decoded for pane plugins?
 **A**: It may be percent-encoded. Pane plugins MUST call

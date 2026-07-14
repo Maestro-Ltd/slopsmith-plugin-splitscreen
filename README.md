@@ -239,25 +239,28 @@ window.createMyVisualization = function ({ container }) {
 | **Handle `resize()` properly** | Called on layout changes and window resizes. Update your canvas backing store respecting `devicePixelRatio`. |
 | **No arrangement assumptions** | `connect()` receives an arrangement index — honor it. |
 
-#### Reserved sentinel values
+#### Sentinel values — how the dropdown protocol works
 
-Split screen uses sentinel strings as dropdown option values and preference keys to distinguish special panel modes from plain arrangement indices. When adding a new pane plugin you must **not** clash with these:
+Each panel mode (highway arrangement, lyrics pane, jumping tab, viz renderer) is identified by the `value` attribute of its `<option>` in the panel's `<select>`. Split screen uses a **sentinel prefix convention** to distinguish modes from plain arrangement indices.
 
-| Sentinel | Where used | Meaning |
-|----------|-----------|---------|
-| `__lyrics__` | select `value`, `arrName` pref | Built-in lyrics-only pane |
-| `__jumping_tab__` | select `value` prefix (`__jumping_tab__:<arrIndex>`), `arrName` pref (`__jumping_tab__:<arrName>`) | Jumping Tab pane (external plugin) |
-| `__viz__` | select `value` prefix (`__viz__:<pluginId>:<arrIndex>`), `arrName` pref (`__viz__:<pluginId>:<arrName>`) | Any `type: "visualization"` plugin rendered via `setRenderer` |
+**Built-in sentinels:**
 
-**Rule:** choose a sentinel that starts with `__` and ends with `__` and is unique to your plugin, e.g. `__my_plugin__`. Values that don't start with `__` are interpreted as plain arrangement names and will be treated as a named arrangement lookup, not a mode switch.
+| Select option value | Saved pref value | Mode |
+|---|---|---|
+| `"0"`, `"1"`, `"2"`, … | `arrName` string | Normal 2D highway for that arrangement |
+| `"__lyrics__"` | `"__lyrics__"` | Full-size lyrics pane (no highway) |
+| `"__jumping_tab__:0"`, etc. | `"__jumping_tab__:arrName"` | Jumping tab pane for that arrangement |
+| `"__viz__:highway_3d:0"`, etc. | `"__viz__:highway_3d:arrName"` | Viz renderer (`highway_3d`, `piano`, etc.) for that arrangement |
 
-`resolveArrIndex()` in `screen.js` already returns `-1` for all known sentinels; add your own sentinel prefix there too so the function short-circuits correctly instead of trying to match it against arrangement names.
+Note that **select values use the arrangement index** (integer) while **saved preferences use the arrangement name** (string) — this is intentional so preferences survive arrangement reordering across songs.
+
+The format rule is: `'__' + id + '__'` for simple panes (no per-arrangement state), or `'__' + id + '__:' + disambiguator` for arrangement-aware panes.
 
 #### Registering a pane plugin with split screen
 
 Pane plugins require a small integration in split screen's `screen.js` (unlike viz plugins, which are auto-discovered). The pattern:
 
-**1.** Define a sentinel value for dropdown values and preference storage:
+**1.** Define a sentinel constant at the top of `screen.js`:
 ```js
 const MY_VIZ_VALUE = '__my_viz__';
 ```
@@ -277,6 +280,11 @@ if (typeof window.createMyVisualization === 'function') {
 **3.** Add `enterMyVizMode(panel)` / `exitMyVizMode(panel, arrIndex)` functions following the lyrics or jumping tab pattern.
 
 **4.** Wire into `select.onchange`, `initPanel()`, `teardownPanels()`, `savePanelPrefs()`, `captureCurrentPrefs()`, `sizeCanvases()`, and `startTimeSync()`.
+
+**5.** Update `resolveArrIndex()` so that your sentinel prefix returns `-1` (signals "not a plain arrangement index"):
+```js
+if (pref.arrName && pref.arrName.startsWith(MY_VIZ_VALUE)) return -1;
+```
 
 #### Reference implementations
 

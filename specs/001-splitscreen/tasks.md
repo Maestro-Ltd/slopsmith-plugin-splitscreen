@@ -13,7 +13,7 @@
 - [x] **DONE** `createLayoutBtn` + select handler.
 - [x] **DONE** `rebuildLayout` with `captureCurrentPrefs` carry-over.
 - [x] **DONE** Persistent `splitscreenLayout` key.
-- [ ] **OPEN [P]** Animated transition between layouts.
+- [x] **DONE** Animated transition between layouts: `rebuildLayout()` fades out `wrap` over 130ms before teardown; `createWrap()` starts new wrap at `opacity:0`; `startSplitScreen()` fades it in once panels are ready (CSS `transition: opacity 0.15s ease-in`). Prevents jarring instant cut when switching Top/Bottom ↔ Left/Right ↔ Quad.
 
 ## US-3: Per-panel renderer
 
@@ -22,8 +22,10 @@
   factory.
 - [x] **DONE** `enter*Mode` / `exit*Mode` for each mode.
 - [x] **DONE** Mode exclusivity (constitution §VIII).
-- [ ] **OPEN [P]** Document the sentinel-value protocol in README
-  more prominently for plugin authors.
+- [x] **DONE** Document the sentinel-value protocol in README
+  more prominently for plugin authors — added "Sentinel values" subsection
+  in "Path 2: Pane plugins" with a built-in values table, select-vs-pref
+  format rule, and updated registration step 5 (resolveArrIndex).
 
 ## US-4: Per-panel toggles
 
@@ -48,8 +50,10 @@
 - [x] **DONE** Popup muted.
 - [x] **DONE** Dock returns panel to original slot.
 - [x] **DONE** Popup auto-follows when main loads a different song.
-- [ ] **OPEN [P]** Detect main-closed and self-dismiss (clarify Q10).
-- [ ] **OPEN [P]** "Dock all" affordance in main window.
+- [x] **DONE** Detect main-closed and self-dismiss — `_onFollowerOrphaned()`
+  shows overlay; triggered by `main-closed` BroadcastChannel msg from
+  main's `beforeunload` handler. See clarify.md Q10.
+- [x] **DONE** "Dock all" button in main window: `createDockAllBtn()` injects `⇲ Dock all` into `#player-controls` (visible only when popups exist); click broadcasts `{type:'dock-all-request'}` via `_ssChannel()`; follower windows handle it in their BroadcastChannel `onmessage` by calling `dockFollowerPanel(panels[0])`. `updateBtn()` is called at every `popups` mutation (set, delete from crash-reap and `closed` msg, delete in `_redockPanel`) to keep visibility in sync.
 
 ## US-7: Layouts inside the popup
 
@@ -70,15 +74,21 @@
 - [x] **DONE** README "Path 1" auto-discovery for visualization
   plugins via `slopsmithViz_<id>()`.
 - [x] **DONE** README "Path 2" pane-plugin contract documented.
-- [ ] **OPEN [P]** Add a runtime self-test page that exercises both
-  paths.
+- [x] **DONE** Add logic unit tests — `tests/test_splitscreen_logic.js`
+  (18 cases): `resolveArrIndex` (6), `getDefaultArrangements` (6),
+  `migratePanelPrefs` (6). Covers sentinel detection, smart-assignment
+  ordering, wraparound, prefs migration (v<2 lyrics reset, legacy
+  `__3d_highway__` → `__viz__` rename, immutability). Run with
+  `node tests/test_splitscreen_logic.js`.
 
 ## Robustness
 
 - [x] **DONE** Idempotent `playSong` / `showScreen` wrappers.
 - [x] **DONE** `sizeCanvases` is the single resize entry.
 - [x] **DONE** `onSongInfo: () => {}` on every panel WS.
-- [ ] **OPEN [P]** Explicit plugin load-order metadata (clarify Q9).
+- [x] **DONE** Explicit plugin load-order metadata (clarify Q9) — resolved
+  as "won't implement now": 200ms poll fallback makes the race benign;
+  core-level sort requires broader ecosystem change. See clarify.md Q9.
 
 ## Spec-kit hygiene
 

@@ -670,6 +670,8 @@
         const player = document.getElementById('player');
         wrap = document.createElement('div');
         wrap.id = 'splitscreen-wrap';
+        // Start transparent so startSplitScreen can fade in after panels are ready.
+        wrap.style.opacity = '0';
         const controls = document.getElementById('player-controls');
         if (controls && controls.parentNode === player) {
             player.insertBefore(wrap, controls);
@@ -1945,6 +1947,7 @@
         // Track the popup (incl. its window handle so the broadcaster can reap
         // it if it dies without firing beforeunload).
         popups.set(popupId, { popup, originalConfig: cfg });
+        updateBtn();
         // Force the next broadcaster tick to re-send the current time even if
         // the main audio is paused (== unchanged), so this freshly-opened
         // popup gets a playhead value instead of sitting at 0.
@@ -2024,6 +2027,16 @@
         }
         const wasActive = active;
         const savedPrefs = wasActive ? captureCurrentPrefs() : null;
+        if (wasActive && wrap) {
+            // Fade out before teardown so the transition isn't jarring.
+            wrap.style.transition = 'opacity 0.12s ease-out';
+            wrap.style.opacity = '0';
+            setTimeout(() => {
+                teardownPanels();
+                startSplitScreen(null, savedPrefs);
+            }, 130);
+            return;
+        }
         teardownPanels();
         if (wasActive) startSplitScreen(null, savedPrefs);
     }
@@ -2166,6 +2179,12 @@
 
         // Hook into the time sync loop
         startTimeSync();
+
+        // Fade the wrap in now that all panels are ready.
+        if (wrap) {
+            wrap.style.transition = 'opacity 0.15s ease-in';
+            wrap.style.opacity = '1';
+        }
         } catch (err) {
             // Rollback any partial state so the UI doesn't get stuck with
             // active=true, default highway hidden, and no panels — that's
@@ -2299,9 +2318,11 @@
             // forced close / OS kill): otherwise their slot lingers and we'd
             // keep broadcasting to nobody at 60 Hz indefinitely. popup.closed
             // is a cheap same-origin boolean.
+            let reaped = false;
             for (const [id, e] of popups) {
-                if (e.popup && e.popup.closed) popups.delete(id);
+                if (e.popup && e.popup.closed) { popups.delete(id); reaped = true; }
             }
+            if (reaped) updateBtn();
             if (popups.size === 0) { _stopPopupBroadcaster(); return; }
             // Only broadcast when the playhead actually moved — skips ~60
             // redundant structured-clone messages/sec (and the follower's
@@ -2362,6 +2383,7 @@
                 // belt-and-suspenders.
                 if (!_pendingRedocks.some(r => r.popupId === msg.popupId)) {
                     popups.delete(msg.popupId);
+                    updateBtn();
                 }
             }
         };
@@ -2384,6 +2406,7 @@
         const entry = popups.get(popupId);
         if (!entry) return;
         popups.delete(popupId);
+        updateBtn();
         if (!currentFilename) return;
 
         // Decide where to slot the redocked panel back. If split is currently
@@ -2506,6 +2529,34 @@
         }
     }
 
+    // ── Dock all pop-outs ──
+    let dockAllBtn = null;
+
+    function createDockAllBtn() {
+        if (dockAllBtn) return dockAllBtn;
+        const c = document.getElementById('player-controls');
+        if (!c) return null;
+        dockAllBtn = document.createElement('button');
+        dockAllBtn.id = 'btn-splitscreen-dock-all';
+        dockAllBtn.className = OFF_CLASS;
+        dockAllBtn.textContent = '⇲ Dock all';
+        dockAllBtn.title = 'Dock all popped-out panels back into this window';
+        dockAllBtn.style.display = 'none';
+        dockAllBtn.onclick = () => {
+            const ch = _ssChannel();
+            if (ch) ch.postMessage({ type: 'dock-all-request' });
+        };
+        const wrapper = c.querySelector('#btn-splitscreen-hide-bar')?.parentElement;
+        if (wrapper && wrapper !== c) {
+            wrapper.insertBefore(dockAllBtn, wrapper.firstChild);
+        } else {
+            const separator = c.querySelector('span.text-gray-700');
+            if (separator) c.insertBefore(dockAllBtn, separator);
+            else c.appendChild(dockAllBtn);
+        }
+        return dockAllBtn;
+    }
+
     // ── Hide/show controls bar ──
     let hideBtn = null;
     let floatBtn = null;
@@ -2599,6 +2650,7 @@
             hideBtn.textContent = controlsHidden ? '▴ Bar' : '▾ Bar';
         }
         if (floatBtn) floatBtn.style.display = (active && controlsHidden) ? '' : 'none';
+        if (dockAllBtn) dockAllBtn.style.display = (active && popups.size > 0) ? '' : 'none';
     }
 
     function injectBtn() {
@@ -2618,6 +2670,7 @@
         if (separator) c.insertBefore(b, separator);
         createLayoutBtn();
         createHideBtn();
+        createDockAllBtn();
         createFloatingShowBtn();
     }
 
@@ -3189,6 +3242,8 @@
                     _onFollowerOrphaned();
                 } else if (msg.type === 'song-changed' && msg.filename && msg.filename !== currentFilename) {
                     _handleFollowerSongChange(msg.filename);
+                } else if (msg.type === 'dock-all-request') {
+                    dockFollowerPanel(panels[0]);
                 }
             };
         }
