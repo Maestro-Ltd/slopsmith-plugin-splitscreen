@@ -1,6 +1,6 @@
 # Slopsmith Plugin: Split Screen
 
-A plugin for [Slopsmith](https://github.com/byrongamatos/slopsmith) that shows 2–6 highway panels side-by-side during playback, each rendering a different arrangement of the same song. Practice lead and rhythm at once, watch bass against lead, or run a quad view of every arrangement a song has.
+A plugin for [Slopsmith](https://github.com/carochacs/slopsmith) that shows 2–6 highway panels side-by-side during playback, each rendering a different arrangement of the same song. Practice lead and rhythm at once, watch bass against lead, or run a quad view of every arrangement a song has.
 
 ## Quick Start
 
@@ -19,7 +19,7 @@ That's it. The full feature list and advanced options are below.
 - **Per-panel visualization picker** — each panel can independently run any installed `slopsmithViz` plugin (e.g. the 3D highway) alongside the default 2D highway
 - **Per-panel viz settings** — when a panel is running a viz renderer that exposes per-panel controls (e.g. 3D Highway's palette and camera settings), a **3D ⚙** button opens a popover with those controls scoped to just that panel; other panels are unaffected
 - **Per-panel lyrics overlay** — click **Lyrics** on any panel to toggle a translucent karaoke band over the renderer (works in 2D highway, 3D highway, and other viz modes — anything that owns the canvas)
-- **Per-panel tab view** — click **Tab** on any panel to overlay a scrolling guitar tab above the highway; pairs with the [Tab View plugin](https://github.com/byrongamatos/slopsmith-plugin-tabview)
+- **Per-panel tab view** — click **Tab** on any panel to overlay a scrolling guitar tab above the highway; pairs with the [Tab View plugin](https://github.com/carochacs/slopsmith/tree/main/plugins/tabview) (bundled in core)
 - **Lyrics pane mode** — select "Lyrics" from a panel's arrangement dropdown to replace that panel with a full-size karaoke renderer (no highway underneath)
 - **Jumping Tab pane mode** — select "Jumping Tab" from a panel's arrangement dropdown to replace that panel with the jumping tab renderer; pairs with the [Jumping Tab plugin](https://github.com/renanboni/slopsmith-plugin-jumpingtab)
 - **Per-panel invert toggle** — flip individual panels between player and audience perspective independently
@@ -178,7 +178,7 @@ window.slopsmithViz_my_viz = function () {
 
 Split screen automatically populates each panel's dropdown with this option and calls `panel.hw.setRenderer(factory())` when selected. **No changes to split screen's code are needed.** Each panel gets an independent renderer instance; the highway provides note data, timing, and the RAF loop.
 
-See the [CLAUDE.md plugin guide](https://github.com/carochacs/slopsmith/blob/main/CLAUDE.md) for the full `setRenderer` lifecycle and bundle shape. The [3D Highway plugin](https://github.com/byrongamatos/slopsmith-plugin-3dhighway) is a reference implementation.
+See the [CLAUDE.md plugin guide](https://github.com/carochacs/slopsmith/blob/main/CLAUDE.md) for the full `setRenderer` lifecycle and bundle shape. The [3D Highway plugin](https://github.com/carochacs/slopsmith/tree/main/plugins/highway_3d) (bundled in core) is a reference implementation.
 
 ### Path 2: Pane plugins (own canvas + own WebSocket)
 
@@ -327,10 +327,10 @@ Messages arrive in the order listed above. Do not start rendering until you rece
 
 | Feature | Plugin |
 |---------|--------|
-| Tab overlay / Tab pane | [Tab View](https://github.com/byrongamatos/slopsmith-plugin-tabview) |
+| Tab overlay / Tab pane | [Tab View](https://github.com/carochacs/slopsmith/tree/main/plugins/tabview) (bundled in core) |
 | Jumping Tab pane | [Jumping Tab](https://github.com/renanboni/slopsmith-plugin-jumpingtab) |
 | Note detection | [Note Detect](https://github.com/topkoa/slopsmith-plugin-notedetect) |
-| 3D highway renderer | [3D Highway](https://github.com/byrongamatos/slopsmith-plugin-3dhighway) |
+| 3D highway renderer | [3D Highway](https://github.com/carochacs/slopsmith/tree/main/plugins/highway_3d) (bundled in core) |
 
 Each optional plugin is detected at runtime; its dropdown entries and buttons are hidden if the plugin isn't installed.
 
