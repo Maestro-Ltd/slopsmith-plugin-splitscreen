@@ -343,4 +343,4 @@ Follow the lyrics/jumping-tab pattern:
 - All work goes on feature branches off `main` in this repo (`carochacs/slopsmith-plugin-splitscreen`)
 - PRs target `carochacs/slopsmith-plugin-splitscreen`
 - Use `gh pr create --repo carochacs/slopsmith-plugin-splitscreen --base main --head carochacs:<branch>` from inside the plugin directory
-- Do not base feature branches on `upstream/main` — the fork and upstream can diverge; always branch from `origin/main`
+- Always branch from `origin/main` — there is no separate upstream remote
