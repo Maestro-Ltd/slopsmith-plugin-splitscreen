@@ -41,7 +41,7 @@ That's it. The full feature list and advanced options are below.
 **Docker (web version)**
 ```bash
 cd /path/to/slopsmith/plugins
-git clone https://github.com/topkoa/slopsmith-plugin-splitscreen.git splitscreen
+git clone https://github.com/carochacs/slopsmith-plugin-splitscreen.git splitscreen
 docker compose restart
 ```
 
