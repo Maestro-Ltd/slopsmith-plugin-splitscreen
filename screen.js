@@ -47,6 +47,10 @@
     // _observeSectionMap(). Connected in startSplitScreen, disconnected in
     // teardownPanels, same lifecycle as `wrap` itself.
     let _sectionMapObserver = null;
+    // Set only while #section-map hasn't mounted yet — watches #player for
+    // its insertion so a later-loading Section Map plugin is still picked up
+    // without needing an unrelated resize/layout-change trigger first.
+    let _sectionMapInsertionObserver = null;
     let currentFilename = null;
     let arrangements = []; // arrangement list from song_info
     let vizPlugins   = []; // {id, name, ...} — type=visualization plugins from /api/plugins
@@ -968,15 +972,34 @@
     // layout change (its owning plugin can show/hide or resize it any time),
     // which sizeCanvases()'s other trigger points don't cover. Watch it
     // directly so wrap.style.top stays correct. Silent no-op if unsupported
-    // or the element isn't present yet (main-window-only — follower/popup
-    // mode force-hides #section-map and never reads it for sizing, so this
-    // never needs to run there). Not observing #section-map itself's own
-    // future insertion is an accepted gap: the next natural sizeCanvases()
-    // trigger (resize, controls toggle, layout change) re-runs this check.
+    // (main-window-only — follower/popup mode force-hides #section-map and
+    // never reads it for sizing, so this never needs to run there).
     function _observeSectionMap() {
         if (_sectionMapObserver || typeof ResizeObserver !== 'function') return;
         const sm = document.getElementById('section-map');
-        if (!sm) return;
+        if (sm) {
+            _connectSectionMapResizeObserver(sm);
+            return;
+        }
+        // Not mounted yet (Section Map plugin loads/renders after splitscreen
+        // activates, or isn't installed at all) — watch #player for its
+        // insertion so it's still picked up without needing an unrelated
+        // resize/layout-change trigger first.
+        if (_sectionMapInsertionObserver || typeof MutationObserver !== 'function') return;
+        const player = document.getElementById('player');
+        if (!player) return;
+        _sectionMapInsertionObserver = new MutationObserver(() => {
+            const sm2 = document.getElementById('section-map');
+            if (!sm2) return;
+            _sectionMapInsertionObserver.disconnect();
+            _sectionMapInsertionObserver = null;
+            _connectSectionMapResizeObserver(sm2);
+            sizeCanvases();
+        });
+        _sectionMapInsertionObserver.observe(player, { childList: true, subtree: true });
+    }
+
+    function _connectSectionMapResizeObserver(sm) {
         _sectionMapObserver = new ResizeObserver(() => {
             if (active && !FOLLOWER) sizeCanvases();
         });
@@ -1943,6 +1966,10 @@
             _sectionMapObserver.disconnect();
             _sectionMapObserver = null;
         }
+        if (_sectionMapInsertionObserver) {
+            _sectionMapInsertionObserver.disconnect();
+            _sectionMapInsertionObserver = null;
+        }
         if (wrap) {
             wrap.remove();
             wrap = null;
@@ -2584,6 +2611,30 @@
             savedPrefs.push(...newPrefsList);
         } else {
             savedPrefs = newPrefsList;
+        }
+
+        // startSplitScreen only ever builds LAYOUTS[layout].panels panels —
+        // it would silently drop any savedPrefs entries beyond that count
+        // (e.g. redocking a self-split 4-panel popup into a main window
+        // whose current layout has fewer slots). Grow to the smallest layout
+        // that can hold every restored panel, same reasoning as popOutPanel's
+        // downgrade-to-fit but sized up instead of down.
+        if (LAYOUTS[layout] && savedPrefs.length > LAYOUTS[layout].panels) {
+            const fit = Object.keys(LAYOUTS)
+                .filter((k) => LAYOUTS[k].panels >= savedPrefs.length)
+                .sort((a, b) => LAYOUTS[a].panels - LAYOUTS[b].panels)[0];
+            if (fit) {
+                layout = fit;
+            } else {
+                // More restored panels than the largest layout ('six', 6
+                // panels) supports — a hard cap of this plugin's grid system,
+                // not something introduced here. Use the largest available
+                // layout and trim the overflow rather than pretending
+                // everything fit.
+                layout = Object.keys(LAYOUTS).sort((a, b) => LAYOUTS[b].panels - LAYOUTS[a].panels)[0];
+                savedPrefs = savedPrefs.slice(0, LAYOUTS[layout].panels);
+            }
+            try { localStorage.setItem('splitscreenLayout', layout); } catch (_) {}
         }
 
         if (active) {
