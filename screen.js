@@ -233,6 +233,86 @@
         }, INTERVAL_MS);
     }
 
+    // Bounded poll for the same load-order race as _startVizFactoryWatch
+    // above, but for the panel-scoped factories: window.createTabView,
+    // window.createNoteDetector, window.createJumpingTabPane. The comment
+    // on _startVizFactoryWatch explicitly names 'tab_view, tuner' as
+    // plugins that load alphabetically after 'splitscreen' — that watch
+    // only covers the viz picker, though. initPanel()'s hasTabFactory /
+    // hasNoteDetect checks were a one-shot `typeof === 'function'` test
+    // with no retry: a panel built before tab_view/note_detect finished
+    // loading got its Tab/Detect buttons permanently disabled
+    // ("... plugin not loaded") for the rest of the session, even once the
+    // factory registered moments later — indistinguishable to the user
+    // from "this panel's controls don't work". _wireTabButton /
+    // _wireDetectButtons (below) are shared by initPanel and this watch so
+    // enabling on late arrival is identical to enabling at init time.
+    // Jumping Tab doesn't need its own re-wire path here: populateSelect()
+    // already re-tests window.createJumpingTabPane on every call, so it
+    // just needs *a* populateSelect() re-run once the factory shows up,
+    // same as the viz watch provides for viz options.
+    function _wireTabButton(panel) {
+        if (typeof window.createTabView === 'function') {
+            panel.tabBtn.disabled = false;
+            panel.tabBtn.title = '';
+            panel.tabBtn.style.opacity = '';
+            panel.tabBtn.onclick = () => togglePanelTab(panel);
+        } else {
+            panel.tabBtn.disabled = true;
+            panel.tabBtn.title = 'Tab View plugin not loaded';
+            panel.tabBtn.style.opacity = '0.4';
+        }
+    }
+    function _wireDetectButtons(panel) {
+        if (typeof window.createNoteDetector === 'function') {
+            panel.detectBtn.disabled = false;
+            panel.detectBtn.title = '';
+            panel.detectBtn.style.opacity = '';
+            panel.channelBtn.disabled = false;
+            panel.channelBtn.style.opacity = '';
+            panel.detectBtn.onclick = () => toggleDetect(panel);
+            panel.channelBtn.onclick = () => cycleDetectChannel(panel);
+        } else {
+            panel.detectBtn.disabled = true;
+            panel.detectBtn.title = 'Note Detect plugin not loaded';
+            panel.detectBtn.style.opacity = '0.4';
+            panel.channelBtn.disabled = true;
+            panel.channelBtn.style.opacity = '0.4';
+        }
+    }
+    let _panelFactoryWatchTimer = null;
+    function _startPanelFactoryWatch() {
+        if (_panelFactoryWatchTimer) return;
+        const seen = {
+            tabView: typeof window.createTabView === 'function',
+            noteDetect: typeof window.createNoteDetector === 'function',
+            jumpingTab: typeof window.createJumpingTabPane === 'function',
+        };
+        if (seen.tabView && seen.noteDetect && seen.jumpingTab) return; // nothing missing
+        const INTERVAL_MS = 200;
+        const MAX_TICKS = 60; // ~12s, matches _startVizFactoryWatch's bound
+        let ticks = 0;
+        _panelFactoryWatchTimer = setInterval(() => {
+            ticks++;
+            if (!seen.tabView && typeof window.createTabView === 'function') {
+                seen.tabView = true;
+                panels.forEach(p => _wireTabButton(p));
+            }
+            if (!seen.noteDetect && typeof window.createNoteDetector === 'function') {
+                seen.noteDetect = true;
+                panels.forEach(p => _wireDetectButtons(p));
+            }
+            if (!seen.jumpingTab && typeof window.createJumpingTabPane === 'function') {
+                seen.jumpingTab = true;
+                panels.forEach(p => { if (p.select) populateSelect(p, p.arrIndex || 0); });
+            }
+            if ((seen.tabView && seen.noteDetect && seen.jumpingTab) || ticks >= MAX_TICKS) {
+                clearInterval(_panelFactoryWatchTimer);
+                _panelFactoryWatchTimer = null;
+            }
+        }, INTERVAL_MS);
+    }
+
     // Keep the promise so startSplitScreen / loadSongInFollower can await it —
     // panels are never populated before the list is ready even on a fast first
     // interaction.
@@ -1814,30 +1894,18 @@
         };
 
         // Per-panel Highway/Tab mode toggle (uses tabview factory)
-        const hasTabFactory = typeof window.createTabView === 'function';
-        if (hasTabFactory) {
-            panel.tabBtn.onclick = () => togglePanelTab(panel);
-        } else {
-            panel.tabBtn.disabled = true;
-            panel.tabBtn.title = 'Tab View plugin not loaded';
-            panel.tabBtn.style.opacity = '0.4';
-        }
+        _wireTabButton(panel);
 
         // Per-panel note detection (uses note_detect factory)
         panel.detectChannel = prefs?.detectChannel || 'mono';
         panel.detector = null;
         panel.channelBtn.textContent = DETECT_CHANNEL_LABELS[panel.detectChannel];
-        const hasNoteDetect = typeof window.createNoteDetector === 'function';
-        if (hasNoteDetect) {
-            panel.detectBtn.onclick = () => toggleDetect(panel);
-            panel.channelBtn.onclick = () => cycleDetectChannel(panel);
-        } else {
-            panel.detectBtn.disabled = true;
-            panel.detectBtn.title = 'Note Detect plugin not loaded';
-            panel.detectBtn.style.opacity = '0.4';
-            panel.channelBtn.disabled = true;
-            panel.channelBtn.style.opacity = '0.4';
-        }
+        _wireDetectButtons(panel);
+
+        // Retry if tab_view / note_detect / jumping_tab haven't finished
+        // loading yet (no-ops once _startPanelFactoryWatch's own check
+        // finds nothing missing, or while a watch is already running).
+        _startPanelFactoryWatch();
 
         if (isLyricsMode) {
             enterLyricsMode(panel);
