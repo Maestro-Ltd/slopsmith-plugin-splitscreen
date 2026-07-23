@@ -77,9 +77,9 @@
     // old element, so every later hw.resize() (bar toggle, window resize,
     // layout change) writes geometry to a dead node and the live canvas stays
     // frozen at its init-time size — leaving an empty strip at the panel bottom.
-    // Re-bind to the new element and re-fit. Registered once; harmless when no
-    // panel owns the swapped canvas (e.g. the main-player highway swapping).
-    if (window.slopsmith && typeof window.slopsmith.on === 'function') {
+    // Re-bind to the new element and re-fit. Harmless when no panel owns the
+    // swapped canvas (e.g. the main-player highway swapping).
+    function _bindCanvasReplacedListener() {
         window.slopsmith.on('highway:canvas-replaced', (e) => {
             const d = e && e.detail;
             if (!d || !d.oldCanvas || !d.newCanvas) return;
@@ -88,6 +88,28 @@
             p.canvas = d.newCanvas;
             try { p.hw.resize(); } catch (_) { /* highway may be mid-teardown */ }
         });
+    }
+    if (window.slopsmith && typeof window.slopsmith.on === 'function') {
+        _bindCanvasReplacedListener();
+    } else {
+        // window.slopsmith (the core event bus) isn't guaranteed to exist yet
+        // when this script executes — plugin scripts load alphabetically and
+        // nothing pins the bus's own init before them. Without a retry, a
+        // core that sets it up even slightly later than splitscreen's own
+        // load would permanently skip this registration (this block only
+        // ever runs once, at module load), silently reintroducing the
+        // stale-canvas bug above for the rest of the session. Bounded poll,
+        // same pattern as _startVizFactoryWatch.
+        let ticks = 0;
+        const timer = setInterval(() => {
+            ticks++;
+            if (window.slopsmith && typeof window.slopsmith.on === 'function') {
+                clearInterval(timer);
+                _bindCanvasReplacedListener();
+            } else if (ticks > 60) {
+                clearInterval(timer); // ~12s — give up, matches _startVizFactoryWatch's bound
+            }
+        }, 200);
     }
 
     // Focus model — which panel currently "owns" multi-instance plugin
@@ -207,6 +229,86 @@
             if (allPresent || ticks >= MAX_TICKS) {
                 clearInterval(_vizFactoryWatchTimer);
                 _vizFactoryWatchTimer = null;
+            }
+        }, INTERVAL_MS);
+    }
+
+    // Bounded poll for the same load-order race as _startVizFactoryWatch
+    // above, but for the panel-scoped factories: window.createTabView,
+    // window.createNoteDetector, window.createJumpingTabPane. The comment
+    // on _startVizFactoryWatch explicitly names 'tab_view, tuner' as
+    // plugins that load alphabetically after 'splitscreen' — that watch
+    // only covers the viz picker, though. initPanel()'s hasTabFactory /
+    // hasNoteDetect checks were a one-shot `typeof === 'function'` test
+    // with no retry: a panel built before tab_view/note_detect finished
+    // loading got its Tab/Detect buttons permanently disabled
+    // ("... plugin not loaded") for the rest of the session, even once the
+    // factory registered moments later — indistinguishable to the user
+    // from "this panel's controls don't work". _wireTabButton /
+    // _wireDetectButtons (below) are shared by initPanel and this watch so
+    // enabling on late arrival is identical to enabling at init time.
+    // Jumping Tab doesn't need its own re-wire path here: populateSelect()
+    // already re-tests window.createJumpingTabPane on every call, so it
+    // just needs *a* populateSelect() re-run once the factory shows up,
+    // same as the viz watch provides for viz options.
+    function _wireTabButton(panel) {
+        if (typeof window.createTabView === 'function') {
+            panel.tabBtn.disabled = false;
+            panel.tabBtn.title = '';
+            panel.tabBtn.style.opacity = '';
+            panel.tabBtn.onclick = () => togglePanelTab(panel);
+        } else {
+            panel.tabBtn.disabled = true;
+            panel.tabBtn.title = 'Tab View plugin not loaded';
+            panel.tabBtn.style.opacity = '0.4';
+        }
+    }
+    function _wireDetectButtons(panel) {
+        if (typeof window.createNoteDetector === 'function') {
+            panel.detectBtn.disabled = false;
+            panel.detectBtn.title = '';
+            panel.detectBtn.style.opacity = '';
+            panel.channelBtn.disabled = false;
+            panel.channelBtn.style.opacity = '';
+            panel.detectBtn.onclick = () => toggleDetect(panel);
+            panel.channelBtn.onclick = () => cycleDetectChannel(panel);
+        } else {
+            panel.detectBtn.disabled = true;
+            panel.detectBtn.title = 'Note Detect plugin not loaded';
+            panel.detectBtn.style.opacity = '0.4';
+            panel.channelBtn.disabled = true;
+            panel.channelBtn.style.opacity = '0.4';
+        }
+    }
+    let _panelFactoryWatchTimer = null;
+    function _startPanelFactoryWatch() {
+        if (_panelFactoryWatchTimer) return;
+        const seen = {
+            tabView: typeof window.createTabView === 'function',
+            noteDetect: typeof window.createNoteDetector === 'function',
+            jumpingTab: typeof window.createJumpingTabPane === 'function',
+        };
+        if (seen.tabView && seen.noteDetect && seen.jumpingTab) return; // nothing missing
+        const INTERVAL_MS = 200;
+        const MAX_TICKS = 60; // ~12s, matches _startVizFactoryWatch's bound
+        let ticks = 0;
+        _panelFactoryWatchTimer = setInterval(() => {
+            ticks++;
+            if (!seen.tabView && typeof window.createTabView === 'function') {
+                seen.tabView = true;
+                panels.forEach(p => _wireTabButton(p));
+            }
+            if (!seen.noteDetect && typeof window.createNoteDetector === 'function') {
+                seen.noteDetect = true;
+                panels.forEach(p => _wireDetectButtons(p));
+            }
+            if (!seen.jumpingTab && typeof window.createJumpingTabPane === 'function') {
+                seen.jumpingTab = true;
+                panels.forEach(p => { if (p.select) populateSelect(p, p.arrIndex || 0); });
+            }
+            if ((seen.tabView && seen.noteDetect && seen.jumpingTab) || ticks >= MAX_TICKS) {
+                clearInterval(_panelFactoryWatchTimer);
+                _panelFactoryWatchTimer = null;
             }
         }, INTERVAL_MS);
     }
@@ -743,13 +845,34 @@
         } else if (_cfg && _cfg.style === 'grid') {
             // CSS grid sizes the cells — no explicit width/height needed on the item.
             // min-width/min-height:0 prevents content from overflowing the cell.
+            // Row/column are explicit (not left to auto-placement) for the same
+            // reason 'five' pins its rows below: consistent placement regardless
+            // of the engine's auto-flow algorithm (see CLAUDE.md's "Best-effort
+            // in JUCE mode" note on an embedded, potentially less-compliant
+            // WebView). 'quad'/'six' use uniform 1x1 cells, so plain row-major
+            // auto-placement is unambiguous per spec and was already verified
+            // correct empirically — this is defense-in-depth, not a fix for an
+            // observed break, done for consistency with 'five'.
             panelDiv.style.minWidth = '0';
             panelDiv.style.minHeight = '0';
+            panelDiv.style.gridRow = String(Math.floor(index / _cfg.cols) + 1);
+            panelDiv.style.gridColumn = String((index % _cfg.cols) + 1);
         } else if (_cfg && _cfg.style === 'grid-3x2') {
             // Top row (index 0,1): 2 panels spanning 3 of 6 columns each.
             // Bottom row (index 2,3,4): 3 panels spanning 2 columns each.
+            // grid-row is explicit rather than left to auto-placement: with
+            // only grid-column set, the bottom row's placement depends on
+            // the engine's auto-flow packing (does span-2 #3 wrap to row 2
+            // after the span-3 pair fills row 1?) — correct in evergreen
+            // Chromium, but this app also runs inside an embedded JUCE
+            // WebView (see CLAUDE.md's "Best-effort in JUCE mode" note on
+            // an older/less-compliant engine), where that packing decision
+            // isn't guaranteed. An explicit row pins both rows regardless
+            // of the auto-placement algorithm, matching why 'five' moved
+            // off flex-wrap to grid in the first place (browser-consistency).
             panelDiv.style.minWidth = '0';
             panelDiv.style.minHeight = '0';
+            panelDiv.style.gridRow = index < 2 ? '1' : '2';
             panelDiv.style.gridColumn = index < 2 ? 'span 3' : 'span 2';
         } else {
             const cfg = _cfg || LAYOUTS['top-bottom'];
@@ -1781,30 +1904,18 @@
         };
 
         // Per-panel Highway/Tab mode toggle (uses tabview factory)
-        const hasTabFactory = typeof window.createTabView === 'function';
-        if (hasTabFactory) {
-            panel.tabBtn.onclick = () => togglePanelTab(panel);
-        } else {
-            panel.tabBtn.disabled = true;
-            panel.tabBtn.title = 'Tab View plugin not loaded';
-            panel.tabBtn.style.opacity = '0.4';
-        }
+        _wireTabButton(panel);
 
         // Per-panel note detection (uses note_detect factory)
         panel.detectChannel = prefs?.detectChannel || 'mono';
         panel.detector = null;
         panel.channelBtn.textContent = DETECT_CHANNEL_LABELS[panel.detectChannel];
-        const hasNoteDetect = typeof window.createNoteDetector === 'function';
-        if (hasNoteDetect) {
-            panel.detectBtn.onclick = () => toggleDetect(panel);
-            panel.channelBtn.onclick = () => cycleDetectChannel(panel);
-        } else {
-            panel.detectBtn.disabled = true;
-            panel.detectBtn.title = 'Note Detect plugin not loaded';
-            panel.detectBtn.style.opacity = '0.4';
-            panel.channelBtn.disabled = true;
-            panel.channelBtn.style.opacity = '0.4';
-        }
+        _wireDetectButtons(panel);
+
+        // Retry if tab_view / note_detect / jumping_tab haven't finished
+        // loading yet (no-ops once _startPanelFactoryWatch's own check
+        // finds nothing missing, or while a watch is already running).
+        _startPanelFactoryWatch();
 
         if (isLyricsMode) {
             enterLyricsMode(panel);
