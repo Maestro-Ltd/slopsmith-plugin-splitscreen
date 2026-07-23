@@ -77,9 +77,9 @@
     // old element, so every later hw.resize() (bar toggle, window resize,
     // layout change) writes geometry to a dead node and the live canvas stays
     // frozen at its init-time size — leaving an empty strip at the panel bottom.
-    // Re-bind to the new element and re-fit. Registered once; harmless when no
-    // panel owns the swapped canvas (e.g. the main-player highway swapping).
-    if (window.slopsmith && typeof window.slopsmith.on === 'function') {
+    // Re-bind to the new element and re-fit. Harmless when no panel owns the
+    // swapped canvas (e.g. the main-player highway swapping).
+    function _bindCanvasReplacedListener() {
         window.slopsmith.on('highway:canvas-replaced', (e) => {
             const d = e && e.detail;
             if (!d || !d.oldCanvas || !d.newCanvas) return;
@@ -88,6 +88,28 @@
             p.canvas = d.newCanvas;
             try { p.hw.resize(); } catch (_) { /* highway may be mid-teardown */ }
         });
+    }
+    if (window.slopsmith && typeof window.slopsmith.on === 'function') {
+        _bindCanvasReplacedListener();
+    } else {
+        // window.slopsmith (the core event bus) isn't guaranteed to exist yet
+        // when this script executes — plugin scripts load alphabetically and
+        // nothing pins the bus's own init before them. Without a retry, a
+        // core that sets it up even slightly later than splitscreen's own
+        // load would permanently skip this registration (this block only
+        // ever runs once, at module load), silently reintroducing the
+        // stale-canvas bug above for the rest of the session. Bounded poll,
+        // same pattern as _startVizFactoryWatch.
+        let ticks = 0;
+        const timer = setInterval(() => {
+            ticks++;
+            if (window.slopsmith && typeof window.slopsmith.on === 'function') {
+                clearInterval(timer);
+                _bindCanvasReplacedListener();
+            } else if (ticks > 60) {
+                clearInterval(timer); // ~12s — give up, matches _startVizFactoryWatch's bound
+            }
+        }, 200);
     }
 
     // Focus model — which panel currently "owns" multi-instance plugin
@@ -748,8 +770,19 @@
         } else if (_cfg && _cfg.style === 'grid-3x2') {
             // Top row (index 0,1): 2 panels spanning 3 of 6 columns each.
             // Bottom row (index 2,3,4): 3 panels spanning 2 columns each.
+            // grid-row is explicit rather than left to auto-placement: with
+            // only grid-column set, the bottom row's placement depends on
+            // the engine's auto-flow packing (does span-2 #3 wrap to row 2
+            // after the span-3 pair fills row 1?) — correct in evergreen
+            // Chromium, but this app also runs inside an embedded JUCE
+            // WebView (see CLAUDE.md's "Best-effort in JUCE mode" note on
+            // an older/less-compliant engine), where that packing decision
+            // isn't guaranteed. An explicit row pins both rows regardless
+            // of the auto-placement algorithm, matching why 'five' moved
+            // off flex-wrap to grid in the first place (browser-consistency).
             panelDiv.style.minWidth = '0';
             panelDiv.style.minHeight = '0';
+            panelDiv.style.gridRow = index < 2 ? '1' : '2';
             panelDiv.style.gridColumn = index < 2 ? 'span 3' : 'span 2';
         } else {
             const cfg = _cfg || LAYOUTS['top-bottom'];
