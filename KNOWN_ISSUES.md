@@ -18,21 +18,13 @@ CLAUDE.md states for both modes: *"Invert / Lyrics / Tab buttons hidden while in
 
 CLAUDE.md's "Single-flight" section explains `_pendingRebuild`/`_pendingRedocks` exist so a second async trigger doesn't tear down a `startSplitScreen()` that's still mid-build. `rebuildLayout()` and `_redockPanel()` both checked `if (_starting) { queue; return; }`; `popOutPanel()` performed the identical `teardownPanels(); startSplitScreen(null, savedPrefs);` pattern with no such check. Fixed by adding the same guard, queuing into a new `_pendingPopOuts` array drained in `startSplitScreen`'s `finally` (same slot as `_pendingRedocks`).
 
-## 5. Docking a self-split popup only recovers one of its sub-panels (Medium)
+## 5. Docking a self-split popup only recovers one of its sub-panels (Medium) — Fixed
 
-The main window's `popups` Map tracks exactly one `originalConfig` per `popupId` (`screen.js:1949, 222`) — one slot per popup *window*, not per panel. But a popup can itself split into up to 4 panels via `rebuildFollowerLayout`/`buildFollowerLayout` (`screen.js:3096-3253`). `dockFollowerPanel(panel)` (`screen.js:2002-2016`) posts state for just the one `panel` argument and unconditionally `window.close()`s. The "Dock all" popup-side handler is hardcoded to `dockFollowerPanel(panels[0])` (`screen.js:3245-3247`), ignoring other sub-panels.
+The main window's `popups` Map tracks exactly one `originalConfig` per `popupId` — one slot per popup *window*, not per panel. But a popup can itself split into up to 4 panels via `rebuildFollowerLayout`/`buildFollowerLayout`. `dockFollowerPanel(panel)` posted state for just the one `panel` argument and unconditionally `window.close()`d; the "Dock all" popup-side handler was hardcoded to `dockFollowerPanel(panels[0])`, ignoring other sub-panels. Fixed by having `dockFollowerPanel` always capture every currently-live sub-panel via the existing `_captureAllFollowerConfigs()` helper (previously only used for song-change rebuilds) and post them as an array in `finalState`; `_redockPanel` now builds one restored panel per array entry (each merged against the same `originalConfig` fallback, since that's the only "before" state the main window ever had for that popup) instead of just one. The legacy single-object `finalState` shape is still tolerated defensively.
 
-**Failure scenario:** Pop out a panel, switch that popup's own layout to "Quad," configure all 4 sub-panels differently, then Dock any one of them (or "Dock all"). Only that one panel's arrangement/mode returns to the main window; the other 3 sub-panels' state is silently discarded when the window closes.
+## 6. `sizeCanvases()`'s section-map offset can go stale outside the documented trigger list (Low-Medium, plausible) — Fixed
 
-**Status:** Not yet fixed — recovering all sub-panels requires the popup to `dockFollowerPanel` (or an equivalent multi-panel post) for each of its own panels, and the main window's `popups` entry to track multiple `originalConfig`s per `popupId`; a larger change than the others in this list, left for follow-up.
-
-## 6. `sizeCanvases()`'s section-map offset can go stale outside the documented trigger list (Low-Medium, plausible)
-
-`sizeCanvases()` reads `#section-map`'s `offsetHeight` to set `wrap.style.top` (`screen.js:927-931`), but CLAUDE.md's "must be called after" list only names: splitscreen activation, controls-bar hide/show, window resize, layout change — not a change to the section-map bar's own visibility/height (a separate plugin) independent of a window resize.
-
-**Failure scenario:** With split active, the section-map bar appears/disappears or changes height via its own UI — panels can render under/over the bar until the user resizes the window or changes layout.
-
-**Status:** Not yet fixed — would need a `ResizeObserver` on `#section-map` (a separate plugin's element) or that plugin to emit an event splitscreen can listen for; left for follow-up.
+`sizeCanvases()` reads `#section-map`'s `offsetHeight` to set `wrap.style.top`, but CLAUDE.md's "must be called after" list only named: splitscreen activation, controls-bar hide/show, window resize, layout change — not a change to the section-map bar's own visibility/height (a separate plugin) independent of a window resize. Fixed by adding a `ResizeObserver` on `#section-map` (`_observeSectionMap()`, guarded by `typeof ResizeObserver === 'function'`), connected in `startSplitScreen` alongside the existing `sizeCanvases()` call and disconnected in `teardownPanels` next to `wrap`'s own teardown. Main-window only — follower/popup mode force-hides `#section-map` and is unaffected. If `#section-map` isn't present yet when the observer connects, a `MutationObserver` on `#player` picks up its later insertion and connects the `ResizeObserver` at that point, rather than waiting for an unrelated resize/layout-change trigger.
 
 ## 7. `togglePanelTab`'s `getCurrentTime` callback has no null-check on `#audio` (Low) — Fixed
 
