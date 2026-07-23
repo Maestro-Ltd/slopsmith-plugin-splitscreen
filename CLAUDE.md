@@ -345,3 +345,10 @@ Follow the lyrics/jumping-tab pattern:
 - PRs target `carochacs/slopsmith-plugin-splitscreen`
 - Use `gh pr create --repo carochacs/slopsmith-plugin-splitscreen --base main --head carochacs:<branch>` from inside the plugin directory
 - Always branch from `origin/main` — there is no separate upstream remote
+
+## Working with CodeRabbit
+
+CodeRabbit reviews PRs on this repo automatically. `.coderabbit.yaml` tells it about the "Common pitfalls" and mutually-exclusive panel-mode conventions above so it doesn't re-flag deliberate decisions (the mandatory empty `onSongInfo` callback, the `hw.resize` override ordering, shared last-write-wins localStorage between main/follower windows) as findings — read that file before assuming a review comment is wrong. When working a PR here:
+- After pushing a fix, give CodeRabbit a pass (`@coderabbitai review` if it doesn't auto-trigger) and treat its comments like any other reviewer's — fix or reply with a reason, don't silently ignore.
+- Resolve review threads as fixes land so the PR reflects live state.
+- Don't let CodeRabbit approval substitute for a human merge decision.

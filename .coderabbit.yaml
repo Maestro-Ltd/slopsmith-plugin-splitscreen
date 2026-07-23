@@ -1,0 +1,72 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+#
+# CodeRabbit config for the Slopsmith Split Screen plugin.
+# Goal: keep automated review signal high without re-litigating conventions
+# that are already deliberate project decisions (see CLAUDE.md). Claude
+# Code agents working this repo should address CodeRabbit comments like
+# any other reviewer's — see "Working with CodeRabbit" in CLAUDE.md.
+
+language: en-US
+early_access: false
+
+tone_instructions: >-
+  This repo is developed by a solo maintainer working with Claude Code
+  agents. PR descriptions may be AI-written; review the diff on its own
+  merits. Prioritize correctness bugs (this plugin manages multi-window
+  state via BroadcastChannel and several mutually-exclusive panel render
+  modes) over style nits.
+
+reviews:
+  profile: chill
+  request_changes_workflow: false
+  high_level_summary: true
+  poem: false
+  review_status: true
+  collapse_walkthrough: true
+  auto_review:
+    enabled: true
+    drafts: false
+  path_filters:
+    - "!**/*.min.js"
+    - "!**/node_modules/**"
+  path_instructions:
+    - path: "screen.js"
+      instructions: |
+        Single IIFE (~5700 lines), loaded as a plain `<script>` tag — no
+        bundler, no ES modules, no npm dependencies, no imports. Don't
+        suggest splitting into modules or adding a build step; that's an
+        explicit project constraint (see CLAUDE.md "Module structure"), not
+        an oversight.
+
+        Known intentional patterns — don't flag these as bugs:
+        - Panel render modes (normal highway / lyrics / jumping-tab / viz)
+          are mutually exclusive by convention (see CLAUDE.md "Panel render
+          modes"); a mode-entry function not checking every other mode flag
+          is fine as long as the corresponding exit function does the
+          checking.
+        - `hw.resize` is overridden on each panel highway instance BEFORE
+          `hw.init()` runs — this ordering is required (CLAUDE.md "Common
+          pitfalls"); flag it only if a new code path calls `initPanel`
+          before the override is installed.
+        - The `{ onSongInfo: () => {} }` empty callback passed to every
+          panel's `hw.connect()` is mandatory, not a no-op to clean up —
+          removing it would let a panel's `song_info` message overwrite the
+          main player's HUD/audio element (see CLAUDE.md).
+        - `localStorage` is intentionally shared, last-write-wins, between
+          the main window and pop-out follower windows for per-panel viz
+          keys — don't suggest namespacing this away.
+        - Cross-window state (pop-out/follower mode) goes over
+          `BroadcastChannel`, never `window.opener` — flag any new
+          `window.opener` usage as a real issue, not a style choice.
+
+        Do flag: real leaks (rAF loops or WebSocket connections not torn
+        down in `teardownPanels()` / `exitVizMode()` / mode-exit functions),
+        missing `await` on the wrapped `window.playSong`, and z-index /
+        DOM-structure regressions against the stack documented in CLAUDE.md.
+    - path: "**/*.md"
+      instructions: |
+        Documentation. This project's code-comment policy is deliberately
+        minimal in JS; don't request docstring coverage.
+
+chat:
+  auto_reply: true
