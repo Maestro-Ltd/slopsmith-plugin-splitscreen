@@ -52,6 +52,14 @@
     // _pendingRebuild. Without this a popup's `docked` message landing during
     // the post-pop-out rebuild would teardown the half-built layout mid-flight.
     let _pendingRedocks = [];
+    // Panels whose popOutPanel() call landed while a start was in flight —
+    // same reasoning as _pendingRedocks (popOutPanel does the same
+    // teardownPanels()+startSplitScreen() as a redock). Re-running
+    // popOutPanel(panel) at drain time is a best-effort retry: if the panel
+    // reference is no longer part of the freshly-rebuilt `panels` array,
+    // popOutPanel's own idx===-1 guard silently drops it rather than acting
+    // on stale panel state.
+    let _pendingPopOuts = [];
 
     // Core swaps a panel's <canvas> element when a renderer needs a different
     // context type than the one the canvas is bound to (browsers lock a canvas
@@ -391,6 +399,7 @@
                 ? VIZ_PREFIX + ':' + p.vizMode + ':' + (arrangements[p.arrIndex]?.name || '')
                 : p.lyricsMode ? LYRICS_VALUE : (arrangements[p.arrIndex]?.name || ''),
             lyrics: !!p.lyricsOverlayOn,
+            inverted: p.hw.getInverted(),
             lefty: p.hw.getLefty(),
             detectChannel: p.detectChannel || 'mono',
             barHidden: p.bar.style.display === 'none',
@@ -692,6 +701,15 @@
                 'position:absolute;top:0;left:0;right:0;z-index:3;display:grid;' +
                 'grid-template-columns:repeat(' + cfg.cols + ',1fr);' +
                 'grid-template-rows:repeat(' + cfg.rows + ',1fr);';
+        } else if (cfg && cfg.style === 'grid-3x2') {
+            // 'five': non-uniform grid — 2 wide panels on top, 3 narrow on bottom.
+            // A 6-column grid lets the top panels span 3 columns each and the
+            // bottom panels span 2 each, avoiding the same flex-wrap % height
+            // collapse that 'quad'/'six' were fixed for.
+            container.style.cssText =
+                'position:absolute;top:0;left:0;right:0;z-index:3;display:grid;' +
+                'grid-template-columns:repeat(6,1fr);' +
+                'grid-template-rows:repeat(2,1fr);';
         } else {
             container.style.cssText =
                 'position:absolute;top:0;left:0;right:0;z-index:3;display:flex;';
@@ -718,10 +736,12 @@
             // min-width/min-height:0 prevents content from overflowing the cell.
             panelDiv.style.minWidth = '0';
             panelDiv.style.minHeight = '0';
-        } else if (layoutKey === 'five') {
-            // Top row: 2 wide panels; bottom row: 3 narrow panels
-            panelDiv.style.width = index < 2 ? '50%' : `${(100 / 3).toFixed(4)}%`;
-            panelDiv.style.height = '50%';
+        } else if (_cfg && _cfg.style === 'grid-3x2') {
+            // Top row (index 0,1): 2 panels spanning 3 of 6 columns each.
+            // Bottom row (index 2,3,4): 3 panels spanning 2 columns each.
+            panelDiv.style.minWidth = '0';
+            panelDiv.style.minHeight = '0';
+            panelDiv.style.gridColumn = index < 2 ? 'span 3' : 'span 2';
         } else {
             const cfg = _cfg || LAYOUTS['top-bottom'];
             panelDiv.style.width = `${(100 / cfg.cols).toFixed(4)}%`;
@@ -947,6 +967,19 @@
     // into the new arrangement. Replacing the highway instance entirely orphans
     // the old closure so late messages can't pollute the new chart.
     function recreatePanelHighway(panel, opts) {
+        // The note detector is constructed bound to panel.hw by value
+        // (toggleDetect). Every caller of recreatePanelHighway replaces
+        // panel.hw with a fresh instance, which would otherwise leave the
+        // detector listening to a stopped, orphaned highway that never
+        // tracks the new chart/arrangement/mode. Tear it down here — the
+        // single choke point all mode/arrangement transitions pass through
+        // — rather than at each call site.
+        if (panel.detector) {
+            panel.detector.destroy();
+            panel.detector = null;
+            panel.updateDetectStyle(false);
+        }
+
         const old = panel.hw;
         const inverted = old.getInverted();
         const lefty = old.getLefty();
@@ -1212,10 +1245,31 @@
         panel.invertBtn.style.display = 'none';
         panel.leftyBtn.style.display = 'none';
         panel.tabBtn.style.display = 'none';
+        panel.lyricsBtn.style.display = 'none';
+        panel.detectBtn.style.display = 'none';
+        panel.channelBtn.style.display = 'none';
         panel.masteryHeading.style.display = 'none';
         panel.masterySlider.style.display = 'none';
         panel.masteryLabel.style.display = 'none';
         _hideVizControls(panel);
+
+        // Detect has nothing to listen to once the highway is stopped and
+        // the canvas hidden — tear it down rather than leaving it bound to
+        // a frozen highway (see recreatePanelHighway's detector teardown).
+        if (panel.detector) {
+            panel.detector.destroy();
+            panel.detector = null;
+            panel.updateDetectStyle(false);
+        }
+
+        // The per-panel lyrics overlay duplicates the full lyrics pane's own
+        // text — tear it down while in this mode; exitLyricsMode recreates it
+        // if lyricsOverlayOn is still set.
+        if (panel.lyricsOverlay) {
+            panel.lyricsOverlay.destroy();
+            panel.lyricsOverlay.el.remove();
+            panel.lyricsOverlay = null;
+        }
 
         panel.lyricsPane = createLyricsPane(panel.panelDiv);
         panel.lyricsPane.el.style.bottom = (panel.bar.offsetHeight || 28) + 'px';
@@ -1239,10 +1293,18 @@
         panel.invertBtn.style.display = '';
         panel.leftyBtn.style.display = '';
         panel.tabBtn.style.display = '';
+        panel.lyricsBtn.style.display = '';
+        panel.detectBtn.style.display = '';
+        panel.channelBtn.style.display = '';
         panel.masteryHeading.style.display = '';
         panel.masterySlider.style.display = '';
         panel.masteryLabel.style.display = '';
         panel.lyricsMode = false;
+
+        if (panel.lyricsOverlayOn) {
+            panel.lyricsOverlay = createLyricsPane(panel.panelDiv, { overlay: true });
+            panel.lyricsOverlay.connect(currentFilename, 0);
+        }
 
         recreatePanelHighway(panel);
         panel.arrIndex = arrIndex;
@@ -1264,10 +1326,31 @@
         panel.invertBtn.style.display = 'none';
         panel.leftyBtn.style.display = 'none';
         panel.tabBtn.style.display = 'none';
+        panel.lyricsBtn.style.display = 'none';
+        panel.detectBtn.style.display = 'none';
+        panel.channelBtn.style.display = 'none';
         panel.masteryHeading.style.display = 'none';
         panel.masterySlider.style.display = 'none';
         panel.masteryLabel.style.display = 'none';
         _hideVizControls(panel);
+
+        // Detect has nothing to listen to once the highway is stopped and
+        // the canvas hidden — tear it down rather than leaving it bound to
+        // a frozen highway (see recreatePanelHighway's detector teardown).
+        if (panel.detector) {
+            panel.detector.destroy();
+            panel.detector = null;
+            panel.updateDetectStyle(false);
+        }
+
+        // Tear down the per-panel lyrics overlay — it would stack above the
+        // jumping-tab container otherwise. exitJumpingTabMode recreates it if
+        // lyricsOverlayOn is still set.
+        if (panel.lyricsOverlay) {
+            panel.lyricsOverlay.destroy();
+            panel.lyricsOverlay.el.remove();
+            panel.lyricsOverlay = null;
+        }
 
         const jtContainer = document.createElement('div');
         jtContainer.style.cssText =
@@ -1306,10 +1389,18 @@
         panel.invertBtn.style.display = '';
         panel.leftyBtn.style.display = '';
         panel.tabBtn.style.display = '';
+        panel.lyricsBtn.style.display = '';
+        panel.detectBtn.style.display = '';
+        panel.channelBtn.style.display = '';
         panel.masteryHeading.style.display = '';
         panel.masterySlider.style.display = '';
         panel.masteryLabel.style.display = '';
         panel.jumpingTabMode = false;
+
+        if (panel.lyricsOverlayOn) {
+            panel.lyricsOverlay = createLyricsPane(panel.panelDiv, { overlay: true });
+            panel.lyricsOverlay.connect(currentFilename, 0);
+        }
 
         recreatePanelHighway(panel);
         panel.arrIndex = arrIndex;
@@ -1466,6 +1557,7 @@
         // Apply saved preferences
         if (prefs && !isLyricsMode && !isJumpingTabMode) {
             if (prefs.lefty !== undefined) panel.hw.setLefty(prefs.lefty);
+            if (prefs.inverted !== undefined) panel.hw.setInverted(prefs.inverted);
             if (prefs.lyrics !== undefined && typeof panel.hw.setLyricsVisible === 'function') {
                 panel.hw.setLyricsVisible(prefs.lyrics);
             }
@@ -1726,7 +1818,7 @@
             const tv = window.createTabView({
                 container: tabContainer,
                 getBeats: () => panel.hw.getBeats(),
-                getCurrentTime: () => document.getElementById('audio').currentTime,
+                getCurrentTime: () => document.getElementById('audio')?.currentTime ?? 0,
             });
             await tv.load(data);
             tv.startSync();
@@ -1918,6 +2010,11 @@
         if (!currentFilename) return;
         const idx = panels.indexOf(panel);
         if (idx === -1) return;
+        // A start (e.g. the rebuild after another pop-out, or the initial
+        // start awaiting fetchVizPlugins) is in flight — teardownPanels()
+        // below would rip out its half-built layout. Queue this pop-out;
+        // startSplitScreen's finally drains it. Same pattern as _redockPanel.
+        if (_starting) { _pendingPopOuts.push(panel); return; }
         if (typeof BroadcastChannel !== 'function') {
             _showMainToast('Pop-out requires a browser that supports BroadcastChannel.');
             return;
@@ -2220,6 +2317,12 @@
             while (_pendingRedocks.length && !_starting) {
                 const r = _pendingRedocks.shift();
                 _redockPanel(r.popupId, r.finalState);
+            }
+            // Drain queued pop-outs the same way, before the rebuild drain so
+            // the reflow (if any) reflects panels already popped.
+            while (_pendingPopOuts.length && !_starting) {
+                const p = _pendingPopOuts.shift();
+                popOutPanel(p);
             }
             // Drain a queued rebuild from rebuildLayout. Only fire if the
             // session is still active — a failed start above already did
