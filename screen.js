@@ -42,6 +42,11 @@
     let alwaysSplit = localStorage.getItem('splitscreenAlwaysSplit') === 'true';
     let panels = [];       // { hw, canvas, ws, arrIndex, controls }
     let wrap = null;
+    // Watches #section-map (a separate plugin's bar) for height changes that
+    // happen independently of a window resize or layout change — see
+    // _observeSectionMap(). Connected in startSplitScreen, disconnected in
+    // teardownPanels, same lifecycle as `wrap` itself.
+    let _sectionMapObserver = null;
     let currentFilename = null;
     let arrangements = []; // arrangement list from song_info
     let vizPlugins   = []; // {id, name, ...} — type=visualization plugins from /api/plugins
@@ -957,6 +962,25 @@
                 p.hw.resize();
             }
         }
+    }
+
+    // #section-map's own height can change independent of a window resize or
+    // layout change (its owning plugin can show/hide or resize it any time),
+    // which sizeCanvases()'s other trigger points don't cover. Watch it
+    // directly so wrap.style.top stays correct. Silent no-op if unsupported
+    // or the element isn't present yet (main-window-only — follower/popup
+    // mode force-hides #section-map and never reads it for sizing, so this
+    // never needs to run there). Not observing #section-map itself's own
+    // future insertion is an accepted gap: the next natural sizeCanvases()
+    // trigger (resize, controls toggle, layout change) re-runs this check.
+    function _observeSectionMap() {
+        if (_sectionMapObserver || typeof ResizeObserver !== 'function') return;
+        const sm = document.getElementById('section-map');
+        if (!sm) return;
+        _sectionMapObserver = new ResizeObserver(() => {
+            if (active && !FOLLOWER) sizeCanvases();
+        });
+        _sectionMapObserver.observe(sm);
     }
 
     // ── Highway re-creation (fixes issue #22: charts mix on mid-song arrangement switch) ──
@@ -1915,6 +1939,10 @@
             p.hw.stop();
         }
         panels = [];
+        if (_sectionMapObserver) {
+            _sectionMapObserver.disconnect();
+            _sectionMapObserver = null;
+        }
         if (wrap) {
             wrap.remove();
             wrap = null;
@@ -2091,11 +2119,17 @@
         }
     }
 
-    // Called from the popup when the user clicks Dock. Posts the panel's
-    // current state back to the main window, then closes. Sets _followerDocking
-    // so the beforeunload handler skips the redundant `closed` post — `docked`
-    // already tells the main to re-instate the panel, and a trailing `closed`
-    // could race ahead of a deferred _redockPanel and drop the popups entry.
+    // Called from the popup when the user clicks Dock (on any one of its
+    // sub-panels) or "Dock all" fires. Posts EVERY current sub-panel's state
+    // back to the main window, then closes. The window closes unconditionally
+    // either way, so recovering all of them — not just the one that was
+    // clicked — is what avoids silently discarding the others' state. The
+    // `panel` argument is vestigial (kept for call-site compatibility) since
+    // docking is no longer scoped to a single panel. Sets _followerDocking so
+    // the beforeunload handler skips the redundant `closed` post — `docked`
+    // already tells the main to re-instate the panels, and a trailing
+    // `closed` could race ahead of a deferred _redockPanel and drop the
+    // popups entry.
     function dockFollowerPanel(panel) {
         if (!FOLLOWER) return;
         _followerDocking = true;
@@ -2105,7 +2139,7 @@
                 ch.postMessage({
                     type: 'docked',
                     popupId: FOLLOWER.popupId,
-                    finalState: _captureFollowerConfig(panel),
+                    finalState: _captureAllFollowerConfigs(),
                 });
             }
         } catch (_) {}
@@ -2260,6 +2294,7 @@
         }
 
         sizeCanvases();
+        _observeSectionMap();
         // Paint focus border + notify any listeners that registered during
         // the per-panel init pass (piano subscribes from its init()).
         _applyFocusBorder();
@@ -2497,9 +2532,13 @@
         }
     }
 
-    // Re-instate a panel that was popped out, using the original config
-    // we captured at pop-out time, overlaid with anything the popup told
-    // us via `finalState`.
+    // Re-instate the panel(s) that were popped out, using the original config
+    // we captured at pop-out time, overlaid with whatever the popup told us
+    // via `finalState` — one entry per sub-panel the popup had live at dock
+    // time (it may have split itself into up to 4). Every entry merges
+    // against the SAME entry.originalConfig: that's the only "before" state
+    // the main window ever had for this popupId, since any split into
+    // multiple sub-panels happened entirely inside the popup after pop-out.
     function _redockPanel(popupId, finalState) {
         // A start (e.g. the rebuild that follows a pop-out) is in flight —
         // tearing down now would race the in-flight panel build. Queue it;
@@ -2512,30 +2551,39 @@
         updateBtn();
         if (!currentFilename) return;
 
-        // Decide where to slot the redocked panel back. If split is currently
-        // active, capture the running prefs and append; otherwise start split
-        // fresh with just this one panel.
-        const merged = Object.assign({}, entry.originalConfig, finalState || {});
-        const arrName = _modeToArrName(merged.mode, arrangements[merged.arrangement]?.name || '');
-        const newPrefs = {
-            arrName,
-            // Restore the per-panel toggles captured at pop-out time (and
-            // optionally overlaid with whatever the popup last reported via
-            // finalState) instead of forcing fresh defaults.
-            lyrics: !!merged.lyrics,
-            inverted: !!merged.inverted,
-            lefty: !!merged.lefty,
-            detectChannel: merged.detectChannel || 'mono',
-            barHidden: !!merged.barHidden,
-            mastery: Number.isFinite(merged.mastery) ? merged.mastery : 1,
-        };
+        // finalState is normally an array (one cfg per live sub-panel at
+        // dock time). Tolerate the legacy single-object shape too, in case
+        // an already-open popup from an older build posts the old format.
+        const states = Array.isArray(finalState) ? finalState
+            : (finalState ? [finalState] : []);
+        if (states.length === 0) return;
+
+        // Decide where to slot the redocked panel(s) back. If split is
+        // currently active, capture the running prefs and append; otherwise
+        // start split fresh with just the redocked panels.
+        const newPrefsList = states.map((fs) => {
+            const merged = Object.assign({}, entry.originalConfig, fs || {});
+            const arrName = _modeToArrName(merged.mode, arrangements[merged.arrangement]?.name || '');
+            return {
+                arrName,
+                // Restore the per-panel toggles captured at pop-out time (and
+                // optionally overlaid with whatever the popup last reported via
+                // finalState) instead of forcing fresh defaults.
+                lyrics: !!merged.lyrics,
+                inverted: !!merged.inverted,
+                lefty: !!merged.lefty,
+                detectChannel: merged.detectChannel || 'mono',
+                barHidden: !!merged.barHidden,
+                mastery: Number.isFinite(merged.mastery) ? merged.mastery : 1,
+            };
+        });
 
         let savedPrefs;
         if (active) {
             savedPrefs = captureCurrentPrefs();
-            savedPrefs.push(newPrefs);
+            savedPrefs.push(...newPrefsList);
         } else {
-            savedPrefs = [newPrefs];
+            savedPrefs = newPrefsList;
         }
 
         if (active) {
@@ -3346,7 +3394,9 @@
                 } else if (msg.type === 'song-changed' && msg.filename && msg.filename !== currentFilename) {
                     _handleFollowerSongChange(msg.filename);
                 } else if (msg.type === 'dock-all-request') {
-                    dockFollowerPanel(panels[0]);
+                    // dockFollowerPanel ignores its argument and always
+                    // captures every live sub-panel — see its definition.
+                    dockFollowerPanel();
                 }
             };
         }
