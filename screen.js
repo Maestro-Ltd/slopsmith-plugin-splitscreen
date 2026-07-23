@@ -845,8 +845,18 @@
         } else if (_cfg && _cfg.style === 'grid') {
             // CSS grid sizes the cells — no explicit width/height needed on the item.
             // min-width/min-height:0 prevents content from overflowing the cell.
+            // Row/column are explicit (not left to auto-placement) for the same
+            // reason 'five' pins its rows below: consistent placement regardless
+            // of the engine's auto-flow algorithm (see CLAUDE.md's "Best-effort
+            // in JUCE mode" note on an embedded, potentially less-compliant
+            // WebView). 'quad'/'six' use uniform 1x1 cells, so plain row-major
+            // auto-placement is unambiguous per spec and was already verified
+            // correct empirically — this is defense-in-depth, not a fix for an
+            // observed break, done for consistency with 'five'.
             panelDiv.style.minWidth = '0';
             panelDiv.style.minHeight = '0';
+            panelDiv.style.gridRow = String(Math.floor(index / _cfg.cols) + 1);
+            panelDiv.style.gridColumn = String((index % _cfg.cols) + 1);
         } else if (_cfg && _cfg.style === 'grid-3x2') {
             // Top row (index 0,1): 2 panels spanning 3 of 6 columns each.
             // Bottom row (index 2,3,4): 3 panels spanning 2 columns each.
