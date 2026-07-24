@@ -220,123 +220,118 @@ test('does not mutate original prefs', () => {
     assert.equal(JSON.stringify(prefs), copy, 'original object unchanged');
 });
 
-// ── Panel grid placement (extracted from createPanel) ────────────────────────
+// ── Panel grid placement (_panelGridPlacement) ───────────────────────────────
 //
 // Tests for the explicit gridRow / gridColumn assignments that fix issue #7's
 // "2 top + 3 bottom, none of the bottom screens can be interacted with" report
 // (KNOWN_ISSUES #8 — 'five' bottom row, #11 — 'quad'/'six' defence-in-depth).
 //
-// The logic is inlined verbatim from createPanel() and parameterised so it can
-// be tested without a DOM.
+// Both the LAYOUTS constant and the _panelGridPlacement function below are
+// inlined verbatim from screen.js so they exercise the production logic rather
+// than a separate copy.  Any drift will be caught by failing assertions.
 
-// Constants (verbatim from screen.js)
-const LAYOUTS_FOR_GRID = {
-    'top-bottom': { panels: 2, cols: 1, rows: 2, style: 'flex-col'  },
-    'left-right': { panels: 2, cols: 2, rows: 1, style: 'flex-row'  },
-    'triple':     { panels: 3, cols: 3, rows: 1, style: 'flex-row'  },
-    'triple-t':   { panels: 3, cols: 1, rows: 3, style: 'flex-col'  },
-    'quad':       { panels: 4, cols: 2, rows: 2, style: 'grid'      },
-    'five':       { panels: 5, cols: 3, rows: 2, style: 'grid-3x2'  },
-    'six':        { panels: 6, cols: 3, rows: 2, style: 'grid'      },
+// LAYOUTS constant (verbatim from screen.js)
+const LAYOUTS = {
+    'top-bottom': { panels: 2, cols: 1, rows: 2, style: 'flex-col' },
+    'left-right': { panels: 2, cols: 2, rows: 1, style: 'flex-row' },
+    'triple':     { panels: 3, cols: 3, rows: 1, style: 'flex-row' },
+    'triple-t':   { panels: 3, cols: 1, rows: 3, style: 'flex-col' },
+    'quad':       { panels: 4, cols: 2, rows: 2, style: 'grid'     },
+    'five':       { panels: 5, cols: 3, rows: 2, style: 'grid-3x2' },
+    'six':        { panels: 6, cols: 3, rows: 2, style: 'grid'     },
 };
 
-// Returns the explicit gridRow / gridColumn assigned by createPanel(), or null
-// for flex layouts that don't use grid placement.
-function getPanelGridPlacement(index, cfg) {
+// _panelGridPlacement (verbatim from screen.js)
+function _panelGridPlacement(index, cfg) {
     if (!cfg) return null;
     if (cfg.style === 'grid') {
-        // style:'grid' (quad / six) — uniform cells; row-major, explicit to
-        // avoid relying on the auto-placement algorithm in embedded WebViews.
         return {
             gridRow:    String(Math.floor(index / cfg.cols) + 1),
             gridColumn: String((index % cfg.cols) + 1),
         };
     }
     if (cfg.style === 'grid-3x2') {
-        // style:'grid-3x2' (five) — non-uniform: top pair spans 3 of 6 columns
-        // each; bottom trio spans 2 columns each.  Explicit row because span-3
-        // + span-2 auto-placement isn't guaranteed on older WebView engines.
         return {
             gridRow:    index < 2 ? '1' : '2',
             gridColumn: index < 2 ? 'span 3' : 'span 2',
         };
     }
-    return null; // flex layouts — width/height % used instead of grid
+    return null;
 }
 
 // ── 'five' (grid-3x2) ─────────────────────────────────────────────────────────
 
-console.log('\ngetPanelGridPlacement — "five" layout (grid-3x2, KNOWN_ISSUES #8)');
+console.log('\n_panelGridPlacement — "five" layout (grid-3x2, KNOWN_ISSUES #8)');
 
 test('five: panel 0 (top-left) → row 1, span 3', () => {
-    const p = getPanelGridPlacement(0, LAYOUTS_FOR_GRID['five']);
+    const p = _panelGridPlacement(0, LAYOUTS['five']);
     assert.equal(p.gridRow, '1');
     assert.equal(p.gridColumn, 'span 3');
 });
 
 test('five: panel 1 (top-right) → row 1, span 3', () => {
-    const p = getPanelGridPlacement(1, LAYOUTS_FOR_GRID['five']);
+    const p = _panelGridPlacement(1, LAYOUTS['five']);
     assert.equal(p.gridRow, '1');
     assert.equal(p.gridColumn, 'span 3');
 });
 
 test('five: panel 2 (bottom-left) → row 2, span 2', () => {
-    const p = getPanelGridPlacement(2, LAYOUTS_FOR_GRID['five']);
+    const p = _panelGridPlacement(2, LAYOUTS['five']);
     assert.equal(p.gridRow, '2');
     assert.equal(p.gridColumn, 'span 2');
 });
 
 test('five: panel 3 (bottom-middle) → row 2, span 2', () => {
-    const p = getPanelGridPlacement(3, LAYOUTS_FOR_GRID['five']);
+    const p = _panelGridPlacement(3, LAYOUTS['five']);
     assert.equal(p.gridRow, '2');
     assert.equal(p.gridColumn, 'span 2');
 });
 
 test('five: panel 4 (bottom-right) → row 2, span 2', () => {
-    const p = getPanelGridPlacement(4, LAYOUTS_FOR_GRID['five']);
+    const p = _panelGridPlacement(4, LAYOUTS['five']);
     assert.equal(p.gridRow, '2');
     assert.equal(p.gridColumn, 'span 2');
 });
 
 // ── 'quad' (grid 2×2) ─────────────────────────────────────────────────────────
 
-console.log('\ngetPanelGridPlacement — "quad" layout (grid 2×2, KNOWN_ISSUES #11)');
+console.log('\n_panelGridPlacement — "quad" layout (grid 2×2, KNOWN_ISSUES #11)');
 
 test('quad: panel 0 → row 1, col 1', () => {
     assert.deepEqual(
-        getPanelGridPlacement(0, LAYOUTS_FOR_GRID['quad']),
+        _panelGridPlacement(0, LAYOUTS['quad']),
         { gridRow: '1', gridColumn: '1' },
     );
 });
 
 test('quad: panel 1 → row 1, col 2', () => {
     assert.deepEqual(
-        getPanelGridPlacement(1, LAYOUTS_FOR_GRID['quad']),
+        _panelGridPlacement(1, LAYOUTS['quad']),
         { gridRow: '1', gridColumn: '2' },
     );
 });
 
 test('quad: panel 2 → row 2, col 1', () => {
     assert.deepEqual(
-        getPanelGridPlacement(2, LAYOUTS_FOR_GRID['quad']),
+        _panelGridPlacement(2, LAYOUTS['quad']),
         { gridRow: '2', gridColumn: '1' },
     );
 });
 
 test('quad: panel 3 → row 2, col 2', () => {
     assert.deepEqual(
-        getPanelGridPlacement(3, LAYOUTS_FOR_GRID['quad']),
+        _panelGridPlacement(3, LAYOUTS['quad']),
         { gridRow: '2', gridColumn: '2' },
     );
 });
 
 // ── 'six' (grid 3×2) ──────────────────────────────────────────────────────────
 
-console.log('\ngetPanelGridPlacement — "six" layout (grid 3×2, KNOWN_ISSUES #11)');
+console.log('\n_panelGridPlacement — "six" layout (grid 3×2, KNOWN_ISSUES #11)');
 
 test('six: top row panels → row 1', () => {
     for (let i = 0; i < 3; i++) {
-        const p = getPanelGridPlacement(i, LAYOUTS_FOR_GRID['six']);
+        const p = _panelGridPlacement(i, LAYOUTS['six']);
         assert.equal(p.gridRow, '1', `panel ${i} should be in row 1`);
         assert.equal(p.gridColumn, String(i + 1), `panel ${i} should be in col ${i + 1}`);
     }
@@ -344,7 +339,7 @@ test('six: top row panels → row 1', () => {
 
 test('six: bottom row panels → row 2', () => {
     for (let i = 3; i < 6; i++) {
-        const p = getPanelGridPlacement(i, LAYOUTS_FOR_GRID['six']);
+        const p = _panelGridPlacement(i, LAYOUTS['six']);
         assert.equal(p.gridRow, '2', `panel ${i} should be in row 2`);
         assert.equal(p.gridColumn, String(i - 2), `panel ${i} should be in col ${i - 2}`);
     }
@@ -352,18 +347,22 @@ test('six: bottom row panels → row 2', () => {
 
 // ── flex layouts return null ───────────────────────────────────────────────────
 
-console.log('\ngetPanelGridPlacement — flex layouts return null');
+console.log('\n_panelGridPlacement — flex layouts return null');
 
 test('top-bottom: flex layout → null (no grid placement)', () => {
-    assert.equal(getPanelGridPlacement(0, LAYOUTS_FOR_GRID['top-bottom']), null);
+    assert.equal(_panelGridPlacement(0, LAYOUTS['top-bottom']), null);
 });
 
 test('left-right: flex layout → null (no grid placement)', () => {
-    assert.equal(getPanelGridPlacement(0, LAYOUTS_FOR_GRID['left-right']), null);
+    assert.equal(_panelGridPlacement(0, LAYOUTS['left-right']), null);
 });
 
 test('triple: flex layout → null (no grid placement)', () => {
-    assert.equal(getPanelGridPlacement(0, LAYOUTS_FOR_GRID['triple']), null);
+    assert.equal(_panelGridPlacement(0, LAYOUTS['triple']), null);
+});
+
+test('triple-t: flex layout → null (no grid placement)', () => {
+    assert.equal(_panelGridPlacement(0, LAYOUTS['triple-t']), null);
 });
 
 // ── Summary ──────────────────────────────────────────────────────────────────
