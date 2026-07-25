@@ -833,6 +833,36 @@
         }
     }
 
+    // Returns the explicit { gridRow, gridColumn } to assign to a panel div, or
+    // null for flex-based layouts that size via percentage width/height instead.
+    // Extracted from createPanel() so the same logic can be tested without a DOM.
+    // style:'grid'      — uniform cells (quad, six): row-major, explicit to avoid
+    //                     relying on auto-placement in embedded JUCE WebViews.
+    // style:'grid-3x2'  — non-uniform (five): top pair spans 3/6 cols each; bottom
+    //                     trio spans 2/6 cols each. Explicit row because auto-flow
+    //                     packing of mixed span-3 + span-2 items isn't guaranteed
+    //                     on older/less-compliant engines (see CLAUDE.md).
+    function _panelGridPlacement(index, cfg) {
+        if (!cfg) return null;
+        if (cfg.style === 'grid') {
+            return {
+                gridRow:    String(Math.floor(index / cfg.cols) + 1),
+                gridColumn: String((index % cfg.cols) + 1),
+            };
+        }
+        if (cfg.style === 'grid-3x2') {
+            // Explicit start line + span prevents CSS auto-placement, which is
+            // unreliable for mixed-span rows in older/embedded WebViews (KNOWN_ISSUES #8).
+            // Grid is 6 cols: top 2 panels each occupy 3 cols; bottom 3 each occupy 2 cols.
+            const gridColumns = ['1 / span 3', '4 / span 3', '1 / span 2', '3 / span 2', '5 / span 2'];
+            return {
+                gridRow:    index < 2 ? '1' : '2',
+                gridColumn: gridColumns[index],
+            };
+        }
+        return null;
+    }
+
     function createPanel(index, container, layoutKey) {
         const panelDiv = document.createElement('div');
         panelDiv.className = 'splitscreen-panel';
@@ -842,42 +872,20 @@
         if (layoutKey === 'follower') {
             panelDiv.style.width = '100%';
             panelDiv.style.height = '100%';
-        } else if (_cfg && _cfg.style === 'grid') {
-            // CSS grid sizes the cells — no explicit width/height needed on the item.
-            // min-width/min-height:0 prevents content from overflowing the cell.
-            // Row/column are explicit (not left to auto-placement) for the same
-            // reason 'five' pins its rows below: consistent placement regardless
-            // of the engine's auto-flow algorithm (see CLAUDE.md's "Best-effort
-            // in JUCE mode" note on an embedded, potentially less-compliant
-            // WebView). 'quad'/'six' use uniform 1x1 cells, so plain row-major
-            // auto-placement is unambiguous per spec and was already verified
-            // correct empirically — this is defense-in-depth, not a fix for an
-            // observed break, done for consistency with 'five'.
-            panelDiv.style.minWidth = '0';
-            panelDiv.style.minHeight = '0';
-            panelDiv.style.gridRow = String(Math.floor(index / _cfg.cols) + 1);
-            panelDiv.style.gridColumn = String((index % _cfg.cols) + 1);
-        } else if (_cfg && _cfg.style === 'grid-3x2') {
-            // Top row (index 0,1): 2 panels spanning 3 of 6 columns each.
-            // Bottom row (index 2,3,4): 3 panels spanning 2 columns each.
-            // grid-row is explicit rather than left to auto-placement: with
-            // only grid-column set, the bottom row's placement depends on
-            // the engine's auto-flow packing (does span-2 #3 wrap to row 2
-            // after the span-3 pair fills row 1?) — correct in evergreen
-            // Chromium, but this app also runs inside an embedded JUCE
-            // WebView (see CLAUDE.md's "Best-effort in JUCE mode" note on
-            // an older/less-compliant engine), where that packing decision
-            // isn't guaranteed. An explicit row pins both rows regardless
-            // of the auto-placement algorithm, matching why 'five' moved
-            // off flex-wrap to grid in the first place (browser-consistency).
-            panelDiv.style.minWidth = '0';
-            panelDiv.style.minHeight = '0';
-            panelDiv.style.gridRow = index < 2 ? '1' : '2';
-            panelDiv.style.gridColumn = index < 2 ? 'span 3' : 'span 2';
         } else {
-            const cfg = _cfg || LAYOUTS['top-bottom'];
-            panelDiv.style.width = `${(100 / cfg.cols).toFixed(4)}%`;
-            panelDiv.style.height = `${(100 / cfg.rows).toFixed(4)}%`;
+            const placement = _panelGridPlacement(index, _cfg);
+            if (placement) {
+                // CSS grid sizes the cells — no explicit width/height needed on
+                // the item. min-width/min-height:0 prevents content overflowing.
+                panelDiv.style.minWidth = '0';
+                panelDiv.style.minHeight = '0';
+                panelDiv.style.gridRow    = placement.gridRow;
+                panelDiv.style.gridColumn = placement.gridColumn;
+            } else {
+                const cfg = _cfg || LAYOUTS['top-bottom'];
+                panelDiv.style.width = `${(100 / cfg.cols).toFixed(4)}%`;
+                panelDiv.style.height = `${(100 / cfg.rows).toFixed(4)}%`;
+            }
         }
 
         const canvas = document.createElement('canvas');
