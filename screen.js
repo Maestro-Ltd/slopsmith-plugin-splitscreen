@@ -851,9 +851,13 @@
             };
         }
         if (cfg.style === 'grid-3x2') {
+            // Explicit start line + span prevents CSS auto-placement, which is
+            // unreliable for mixed-span rows in older/embedded WebViews (KNOWN_ISSUES #8).
+            // Grid is 6 cols: top 2 panels each occupy 3 cols; bottom 3 each occupy 2 cols.
+            const gridColumns = ['1 / span 3', '4 / span 3', '1 / span 2', '3 / span 2', '5 / span 2'];
             return {
                 gridRow:    index < 2 ? '1' : '2',
-                gridColumn: index < 2 ? 'span 3' : 'span 2',
+                gridColumn: gridColumns[index],
             };
         }
         return null;

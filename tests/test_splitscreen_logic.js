@@ -251,9 +251,13 @@ function _panelGridPlacement(index, cfg) {
         };
     }
     if (cfg.style === 'grid-3x2') {
+        // Explicit start line + span prevents CSS auto-placement, which is
+        // unreliable for mixed-span rows in older/embedded WebViews (KNOWN_ISSUES #8).
+        // Grid is 6 cols: top 2 panels each occupy 3 cols; bottom 3 each occupy 2 cols.
+        const gridColumns = ['1 / span 3', '4 / span 3', '1 / span 2', '3 / span 2', '5 / span 2'];
         return {
             gridRow:    index < 2 ? '1' : '2',
-            gridColumn: index < 2 ? 'span 3' : 'span 2',
+            gridColumn: gridColumns[index],
         };
     }
     return null;
@@ -263,34 +267,34 @@ function _panelGridPlacement(index, cfg) {
 
 console.log('\n_panelGridPlacement — "five" layout (grid-3x2, KNOWN_ISSUES #8)');
 
-test('five: panel 0 (top-left) → row 1, span 3', () => {
+test('five: panel 0 (top-left) → row 1, col 1 / span 3', () => {
     const p = _panelGridPlacement(0, LAYOUTS['five']);
     assert.equal(p.gridRow, '1');
-    assert.equal(p.gridColumn, 'span 3');
+    assert.equal(p.gridColumn, '1 / span 3');
 });
 
-test('five: panel 1 (top-right) → row 1, span 3', () => {
+test('five: panel 1 (top-right) → row 1, col 4 / span 3', () => {
     const p = _panelGridPlacement(1, LAYOUTS['five']);
     assert.equal(p.gridRow, '1');
-    assert.equal(p.gridColumn, 'span 3');
+    assert.equal(p.gridColumn, '4 / span 3');
 });
 
-test('five: panel 2 (bottom-left) → row 2, span 2', () => {
+test('five: panel 2 (bottom-left) → row 2, col 1 / span 2', () => {
     const p = _panelGridPlacement(2, LAYOUTS['five']);
     assert.equal(p.gridRow, '2');
-    assert.equal(p.gridColumn, 'span 2');
+    assert.equal(p.gridColumn, '1 / span 2');
 });
 
-test('five: panel 3 (bottom-middle) → row 2, span 2', () => {
+test('five: panel 3 (bottom-middle) → row 2, col 3 / span 2', () => {
     const p = _panelGridPlacement(3, LAYOUTS['five']);
     assert.equal(p.gridRow, '2');
-    assert.equal(p.gridColumn, 'span 2');
+    assert.equal(p.gridColumn, '3 / span 2');
 });
 
-test('five: panel 4 (bottom-right) → row 2, span 2', () => {
+test('five: panel 4 (bottom-right) → row 2, col 5 / span 2', () => {
     const p = _panelGridPlacement(4, LAYOUTS['five']);
     assert.equal(p.gridRow, '2');
-    assert.equal(p.gridColumn, 'span 2');
+    assert.equal(p.gridColumn, '5 / span 2');
 });
 
 // ── 'quad' (grid 2×2) ─────────────────────────────────────────────────────────
