@@ -418,10 +418,9 @@ test('left-right: flex layout → null (no grid placement)', () => {
 // robust enough: the constant is a simple string-array literal and the names
 // are stable identifiers that won't appear incidentally elsewhere in the file.
 //
-// btn-practice must be present: the core Practice button is positioned over
-// the split-screen wrap (z-index:3) with a higher z-index, intercepting
-// pointer events on panel control bars across all layouts — most visibly
-// blocking the bottom panel row entirely (issue #22).
+// Practice remains a global playback control, but in split mode it is
+// relocated into #player-controls rather than hidden. This avoids pointer
+// interception over lower panels while preserving access to practice controls.
 
 const fs   = require('fs');
 const path = require('path');
@@ -435,23 +434,26 @@ const redundantControlIdsLiteral = (() => {
 
 console.log('\nREDUNDANT_CONTROL_IDS (checked against screen.js source)');
 
-test('screen.js REDUNDANT_CONTROL_IDS includes btn-practice (issue #22)', () => {
+test('screen.js REDUNDANT_CONTROL_IDS excludes btn-practice (issue #22)', () => {
     assert.ok(
-        redundantControlIdsLiteral.includes("'btn-practice'"),
-        "btn-practice must appear in screen.js's REDUNDANT_CONTROL_IDS so the " +
-        'core Practice button is hidden while split is active and cannot ' +
-        'intercept pointer events on panel control bars',
+        !redundantControlIdsLiteral.includes("'btn-practice'"),
+        'btn-practice must be relocated into player-controls in split mode, not hidden as redundant',
     );
 });
 
 test('screen.js REDUNDANT_CONTROL_IDS includes all legacy core controls', () => {
     const required = [
         'arr-select', 'mastery-slider-label', 'mastery-slider', 'mastery-label',
-        'btn-lyrics', 'viz-picker-label', 'viz-picker', 'btn-practice',
+        'btn-lyrics', 'viz-picker-label', 'viz-picker',
     ];
     for (const id of required) {
         assert.ok(redundantControlIdsLiteral.includes("'" + id + "'"), "screen.js is missing '" + id + "' in REDUNDANT_CONTROL_IDS");
     }
+});
+
+test('screen.js defines practice relocation helpers', () => {
+    assert.ok(screenSrc.includes('function relocatePracticeButton()'), 'screen.js is missing relocatePracticeButton()');
+    assert.ok(screenSrc.includes('function restorePracticeButton()'), 'screen.js is missing restorePracticeButton()');
 });
 
 // ── Summary ──────────────────────────────────────────────────────────────────
