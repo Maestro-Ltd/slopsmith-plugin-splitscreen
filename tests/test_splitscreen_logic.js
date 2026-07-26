@@ -427,7 +427,8 @@ const fs   = require('fs');
 const path = require('path');
 const screenSrc = fs.readFileSync(path.join(__dirname, '..', 'screen.js'), 'utf8');
 const redundantControlIdsLiteral = (() => {
-    const match = screenSrc.match(/const REDUNDANT_CONTROL_IDS = \[((?:.|\n)*?)\];/);
+    // Use [\s\S] so the match works with both LF and CRLF line endings.
+    const match = screenSrc.match(/const REDUNDANT_CONTROL_IDS = \[([\s\S]*?)\];/);
     assert.ok(match, 'screen.js is missing the REDUNDANT_CONTROL_IDS array literal');
     return match[1];
 })();
