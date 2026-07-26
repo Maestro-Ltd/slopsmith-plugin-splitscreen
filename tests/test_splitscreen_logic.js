@@ -408,6 +408,47 @@ test('left-right: flex layout → null (no grid placement)', () => {
     assert.equal(_panelGridPlacement(0, LAYOUTS['left-right']), null);
 });
 
+// ── REDUNDANT_CONTROL_IDS ────────────────────────────────────────────────────
+//
+// Verifies the set of core element IDs that are hidden while split-screen is
+// active (setRedundantControlsHidden).  btn-practice must be present: the
+// core Practice button is positioned over the split-screen wrap (z-index:3)
+// with a higher z-index, intercepting pointer events on panel control bars
+// across all layouts — most visibly blocking the bottom panel row entirely
+// (issue #22).  Any element added here must tolerate a missing DOM node
+// (getElementById returns null → guarded by `if (el)`).
+
+const REDUNDANT_CONTROL_IDS = [
+    'arr-select',
+    'mastery-slider-label',
+    'mastery-slider',
+    'mastery-label',
+    'btn-lyrics',
+    'viz-picker-label',
+    'viz-picker',
+    'btn-practice',
+];
+
+console.log('\nREDUNDANT_CONTROL_IDS');
+
+test('includes btn-practice (issue #22: Practice button intercepts panel clicks)', () => {
+    assert.ok(
+        REDUNDANT_CONTROL_IDS.includes('btn-practice'),
+        'btn-practice must be hidden while split is active so the core Practice ' +
+        'button does not intercept pointer events on panel bars',
+    );
+});
+
+test('includes all expected core controls', () => {
+    const required = [
+        'arr-select', 'mastery-slider-label', 'mastery-slider', 'mastery-label',
+        'btn-lyrics', 'viz-picker-label', 'viz-picker', 'btn-practice',
+    ];
+    for (const id of required) {
+        assert.ok(REDUNDANT_CONTROL_IDS.includes(id), `missing: ${id}`);
+    }
+});
+
 // ── Summary ──────────────────────────────────────────────────────────────────
 
 console.log(`\n${_passed} passed, ${_failed} failed\n`);
