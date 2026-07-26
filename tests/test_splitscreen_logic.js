@@ -426,12 +426,17 @@ test('left-right: flex layout → null (no grid placement)', () => {
 const fs   = require('fs');
 const path = require('path');
 const screenSrc = fs.readFileSync(path.join(__dirname, '..', 'screen.js'), 'utf8');
+const redundantControlIdsLiteral = (() => {
+    const match = screenSrc.match(/const REDUNDANT_CONTROL_IDS = \[((?:.|\n)*?)\];/);
+    assert.ok(match, 'screen.js is missing the REDUNDANT_CONTROL_IDS array literal');
+    return match[1];
+})();
 
 console.log('\nREDUNDANT_CONTROL_IDS (checked against screen.js source)');
 
 test('screen.js REDUNDANT_CONTROL_IDS includes btn-practice (issue #22)', () => {
     assert.ok(
-        screenSrc.includes("'btn-practice'"),
+        redundantControlIdsLiteral.includes("'btn-practice'"),
         "btn-practice must appear in screen.js's REDUNDANT_CONTROL_IDS so the " +
         'core Practice button is hidden while split is active and cannot ' +
         'intercept pointer events on panel control bars',
@@ -444,7 +449,7 @@ test('screen.js REDUNDANT_CONTROL_IDS includes all legacy core controls', () => 
         'btn-lyrics', 'viz-picker-label', 'viz-picker', 'btn-practice',
     ];
     for (const id of required) {
-        assert.ok(screenSrc.includes("'" + id + "'"), "screen.js is missing '" + id + "' in REDUNDANT_CONTROL_IDS");
+        assert.ok(redundantControlIdsLiteral.includes("'" + id + "'"), "screen.js is missing '" + id + "' in REDUNDANT_CONTROL_IDS");
     }
 });
 
