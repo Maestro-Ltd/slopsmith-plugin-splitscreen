@@ -410,42 +410,41 @@ test('left-right: flex layout → null (no grid placement)', () => {
 
 // ── REDUNDANT_CONTROL_IDS ────────────────────────────────────────────────────
 //
-// Verifies the set of core element IDs that are hidden while split-screen is
-// active (setRedundantControlsHidden).  btn-practice must be present: the
-// core Practice button is positioned over the split-screen wrap (z-index:3)
-// with a higher z-index, intercepting pointer events on panel control bars
-// across all layouts — most visibly blocking the bottom panel row entirely
-// (issue #22).  Any element added here must tolerate a missing DOM node
-// (getElementById returns null → guarded by `if (el)`).
+// Verifies that specific element IDs are present in REDUNDANT_CONTROL_IDS in
+// screen.js (the list of core controls hidden while split-screen is active).
+//
+// screen.js is an IIFE so its exports can't be required directly.  We instead
+// read the source file and check for the literal string values, which is
+// robust enough: the constant is a simple string-array literal and the names
+// are stable identifiers that won't appear incidentally elsewhere in the file.
+//
+// btn-practice must be present: the core Practice button is positioned over
+// the split-screen wrap (z-index:3) with a higher z-index, intercepting
+// pointer events on panel control bars across all layouts — most visibly
+// blocking the bottom panel row entirely (issue #22).
 
-const REDUNDANT_CONTROL_IDS = [
-    'arr-select',
-    'mastery-slider-label',
-    'mastery-slider',
-    'mastery-label',
-    'btn-lyrics',
-    'viz-picker-label',
-    'viz-picker',
-    'btn-practice',
-];
+const fs   = require('fs');
+const path = require('path');
+const screenSrc = fs.readFileSync(path.join(__dirname, '..', 'screen.js'), 'utf8');
 
-console.log('\nREDUNDANT_CONTROL_IDS');
+console.log('\nREDUNDANT_CONTROL_IDS (checked against screen.js source)');
 
-test('includes btn-practice (issue #22: Practice button intercepts panel clicks)', () => {
+test('screen.js REDUNDANT_CONTROL_IDS includes btn-practice (issue #22)', () => {
     assert.ok(
-        REDUNDANT_CONTROL_IDS.includes('btn-practice'),
-        'btn-practice must be hidden while split is active so the core Practice ' +
-        'button does not intercept pointer events on panel bars',
+        screenSrc.includes("'btn-practice'"),
+        "btn-practice must appear in screen.js's REDUNDANT_CONTROL_IDS so the " +
+        'core Practice button is hidden while split is active and cannot ' +
+        'intercept pointer events on panel control bars',
     );
 });
 
-test('includes all expected core controls', () => {
+test('screen.js REDUNDANT_CONTROL_IDS includes all legacy core controls', () => {
     const required = [
         'arr-select', 'mastery-slider-label', 'mastery-slider', 'mastery-label',
         'btn-lyrics', 'viz-picker-label', 'viz-picker', 'btn-practice',
     ];
     for (const id of required) {
-        assert.ok(REDUNDANT_CONTROL_IDS.includes(id), `missing: ${id}`);
+        assert.ok(screenSrc.includes("'" + id + "'"), "screen.js is missing '" + id + "' in REDUNDANT_CONTROL_IDS");
     }
 });
 
