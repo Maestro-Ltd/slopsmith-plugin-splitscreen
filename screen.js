@@ -11,8 +11,8 @@
     const LAYOUTS = {
         'top-bottom': { panels: 2, cols: 1, rows: 2, style: 'flex-col' },
         'left-right': { panels: 2, cols: 2, rows: 1, style: 'flex-row' },
-        'triple':     { panels: 3, cols: 3, rows: 1, style: 'flex-row' },
-        'triple-t':   { panels: 3, cols: 1, rows: 3, style: 'flex-col' },
+        'triple':     { panels: 3, cols: 3, rows: 1, style: 'grid' },
+        'triple-t':   { panels: 3, cols: 1, rows: 3, style: 'grid' },
         'quad':       { panels: 4, cols: 2, rows: 2, style: 'grid' },
         'five':       { panels: 5, cols: 3, rows: 2, style: 'grid-3x2' },
         'six':        { panels: 6, cols: 3, rows: 2, style: 'grid' },
@@ -851,10 +851,11 @@
             };
         }
         if (cfg.style === 'grid-3x2') {
-            // Explicit start line + span prevents CSS auto-placement, which is
-            // unreliable for mixed-span rows in older/embedded WebViews (KNOWN_ISSUES #8).
+            // Explicit start/end column lines (no `span` keyword) prevent CSS
+            // auto-placement AND avoid the `span` keyword, which some older/embedded
+            // WebViews (e.g. JUCE) fail to parse correctly (KNOWN_ISSUES #8).
             // Grid is 6 cols: top 2 panels each occupy 3 cols; bottom 3 each occupy 2 cols.
-            const gridColumns = ['1 / span 3', '4 / span 3', '1 / span 2', '3 / span 2', '5 / span 2'];
+            const gridColumns = ['1 / 4', '4 / 7', '1 / 3', '3 / 5', '5 / 7'];
             return {
                 gridRow:    index < 2 ? '1' : '2',
                 gridColumn: gridColumns[index],
