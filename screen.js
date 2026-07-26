@@ -2834,6 +2834,8 @@
 
     // ── Redundant main-bar controls (hidden while split is active because each
     // panel exposes its own arrangement / mastery / lyrics / viz controls) ──
+    // 'section-practice-pill' is core's actual Practice button id (previously
+    // listed here as 'btn-practice', which matched nothing — see issue #22).
     const REDUNDANT_CONTROL_IDS = [
         'arr-select',
         'mastery-slider-label',
@@ -2842,7 +2844,7 @@
         'btn-lyrics',
         'viz-picker-label',
         'viz-picker',
-        'btn-practice',
+        'section-practice-pill',
     ];
 
     function setRedundantControlsHidden(hide) {

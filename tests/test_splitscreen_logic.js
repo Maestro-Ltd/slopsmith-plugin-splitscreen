@@ -462,7 +462,7 @@ console.log('\nREDUNDANT_CONTROL_IDS (checked against screen.js source)');
 test('screen.js REDUNDANT_CONTROL_IDS includes all legacy core controls', () => {
     const required = [
         'arr-select', 'mastery-slider-label', 'mastery-slider', 'mastery-label',
-        'btn-lyrics', 'viz-picker-label', 'viz-picker', 'btn-practice',
+        'btn-lyrics', 'viz-picker-label', 'viz-picker', 'section-practice-pill',
     ];
     for (const id of required) {
         assert.ok(redundantControlIdsLiteral.includes("'" + id + "'"), "screen.js is missing '" + id + "' in REDUNDANT_CONTROL_IDS");
