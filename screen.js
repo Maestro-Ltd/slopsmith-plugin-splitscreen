@@ -2834,6 +2834,10 @@
 
     // ── Redundant main-bar controls (hidden while split is active because each
     // panel exposes its own arrangement / mastery / lyrics / viz controls) ──
+    // btn-practice is also hidden: the core's Practice button is positioned
+    // over the split-screen wrap (z-index:3) with a higher z-index, causing
+    // it to intercept pointer events on panel bars in all layouts — most
+    // visibly blocking the bottom-most panel row's control bar entirely.
     const REDUNDANT_CONTROL_IDS = [
         'arr-select',
         'mastery-slider-label',
@@ -2842,6 +2846,7 @@
         'btn-lyrics',
         'viz-picker-label',
         'viz-picker',
+        'btn-practice',
     ];
 
     function setRedundantControlsHidden(hide) {
