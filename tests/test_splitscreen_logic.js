@@ -232,8 +232,8 @@ test('does not mutate original prefs', () => {
 
 // LAYOUTS constant (verbatim from screen.js)
 const LAYOUTS = {
-    'top-bottom': { panels: 2, cols: 1, rows: 2, style: 'flex-col' },
-    'left-right': { panels: 2, cols: 2, rows: 1, style: 'flex-row' },
+    'top-bottom': { panels: 2, cols: 1, rows: 2, style: 'grid'     },
+    'left-right': { panels: 2, cols: 2, rows: 1, style: 'grid'     },
     'triple':     { panels: 3, cols: 3, rows: 1, style: 'grid'     },
     'triple-t':   { panels: 3, cols: 1, rows: 3, style: 'grid'     },
     'quad':       { panels: 4, cols: 2, rows: 2, style: 'grid'     },
@@ -396,16 +396,45 @@ test('triple-t: panel 2 → row 3, col 1', () => {
     );
 });
 
-// ── flex layouts return null ───────────────────────────────────────────────────
+// ── 'top-bottom' / 'left-right' (grid, issue #22) ───────────────────────────
+//
+// These two were the last layouts left on flex (percentage height/width
+// inside a container sized via position insets, not an explicit height) —
+// the same class of bug that KNOWN_ISSUES #8/#11 already fixed for
+// five/quad/six/triple/triple-t by moving to explicit CSS grid placement.
+// Migrated here for the same reason (issue #22 — bottom/non-primary panels
+// non-interactive in Top/Bottom and Left/Right).
 
-console.log('\n_panelGridPlacement — flex layouts return null');
+console.log('\n_panelGridPlacement — "top-bottom" layout (grid 1×2)');
 
-test('top-bottom: flex layout → null (no grid placement)', () => {
-    assert.equal(_panelGridPlacement(0, LAYOUTS['top-bottom']), null);
+test('top-bottom: panel 0 → row 1, col 1', () => {
+    assert.deepEqual(
+        _panelGridPlacement(0, LAYOUTS['top-bottom']),
+        { gridRow: '1', gridColumn: '1' },
+    );
 });
 
-test('left-right: flex layout → null (no grid placement)', () => {
-    assert.equal(_panelGridPlacement(0, LAYOUTS['left-right']), null);
+test('top-bottom: panel 1 → row 2, col 1', () => {
+    assert.deepEqual(
+        _panelGridPlacement(1, LAYOUTS['top-bottom']),
+        { gridRow: '2', gridColumn: '1' },
+    );
+});
+
+console.log('\n_panelGridPlacement — "left-right" layout (grid 2×1)');
+
+test('left-right: panel 0 → row 1, col 1', () => {
+    assert.deepEqual(
+        _panelGridPlacement(0, LAYOUTS['left-right']),
+        { gridRow: '1', gridColumn: '1' },
+    );
+});
+
+test('left-right: panel 1 → row 1, col 2', () => {
+    assert.deepEqual(
+        _panelGridPlacement(1, LAYOUTS['left-right']),
+        { gridRow: '1', gridColumn: '2' },
+    );
 });
 
 // ── REDUNDANT_CONTROL_IDS ────────────────────────────────────────────────────
@@ -418,10 +447,6 @@ test('left-right: flex layout → null (no grid placement)', () => {
 // robust enough: the constant is a simple string-array literal and the names
 // are stable identifiers that won't appear incidentally elsewhere in the file.
 //
-// Practice remains a global playback control, but in split mode it is
-// relocated into #player-controls rather than hidden. This avoids pointer
-// interception over lower panels while preserving access to practice controls.
-
 const fs   = require('fs');
 const path = require('path');
 const screenSrc = fs.readFileSync(path.join(__dirname, '..', 'screen.js'), 'utf8');
@@ -434,26 +459,14 @@ const redundantControlIdsLiteral = (() => {
 
 console.log('\nREDUNDANT_CONTROL_IDS (checked against screen.js source)');
 
-test('screen.js REDUNDANT_CONTROL_IDS excludes btn-practice (issue #22)', () => {
-    assert.ok(
-        !redundantControlIdsLiteral.includes("'btn-practice'"),
-        'btn-practice must be relocated into player-controls in split mode, not hidden as redundant',
-    );
-});
-
 test('screen.js REDUNDANT_CONTROL_IDS includes all legacy core controls', () => {
     const required = [
         'arr-select', 'mastery-slider-label', 'mastery-slider', 'mastery-label',
-        'btn-lyrics', 'viz-picker-label', 'viz-picker',
+        'btn-lyrics', 'viz-picker-label', 'viz-picker', 'section-practice-pill',
     ];
     for (const id of required) {
         assert.ok(redundantControlIdsLiteral.includes("'" + id + "'"), "screen.js is missing '" + id + "' in REDUNDANT_CONTROL_IDS");
     }
-});
-
-test('screen.js defines practice relocation helpers', () => {
-    assert.ok(screenSrc.includes('function relocatePracticeButton()'), 'screen.js is missing relocatePracticeButton()');
-    assert.ok(screenSrc.includes('function restorePracticeButton()'), 'screen.js is missing restorePracticeButton()');
 });
 
 // ── Summary ──────────────────────────────────────────────────────────────────

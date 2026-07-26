@@ -9,8 +9,8 @@
      * ====================================================================== */
 
     const LAYOUTS = {
-        'top-bottom': { panels: 2, cols: 1, rows: 2, style: 'flex-col' },
-        'left-right': { panels: 2, cols: 2, rows: 1, style: 'flex-row' },
+        'top-bottom': { panels: 2, cols: 1, rows: 2, style: 'grid' },
+        'left-right': { panels: 2, cols: 2, rows: 1, style: 'grid' },
         'triple':     { panels: 3, cols: 3, rows: 1, style: 'grid' },
         'triple-t':   { panels: 3, cols: 1, rows: 3, style: 'grid' },
         'quad':       { panels: 4, cols: 2, rows: 2, style: 'grid' },
@@ -2448,7 +2448,6 @@
         _emitFocusChange();
         updateBtn();
         setRedundantControlsHidden(true);
-        relocatePracticeButton();
         // HUD: visible while loaded; fades out when audio begins playback.
         const audio = document.getElementById('audio');
         if (audio && !audio.paused) fadeOutHud();
@@ -2476,7 +2475,6 @@
             console.error('startSplitScreen failed:', err);
             teardownPanels();
             setRedundantControlsHidden(false);
-            restorePracticeButton();
             restoreHud();
             const defaultCanvas = document.getElementById('highway');
             if (defaultCanvas) defaultCanvas.style.display = '';
@@ -2529,7 +2527,6 @@
         // a single split session.
         focusListeners.clear();
         setRedundantControlsHidden(false);
-        restorePracticeButton();
         restoreHud();
 
         // Restore default highway canvas (core re-emits `highway:visibility` →
@@ -2837,6 +2834,8 @@
 
     // ── Redundant main-bar controls (hidden while split is active because each
     // panel exposes its own arrangement / mastery / lyrics / viz controls) ──
+    // 'section-practice-pill' is core's actual Practice button id (previously
+    // listed here as 'btn-practice', which matched nothing — see issue #22).
     const REDUNDANT_CONTROL_IDS = [
         'arr-select',
         'mastery-slider-label',
@@ -2845,6 +2844,7 @@
         'btn-lyrics',
         'viz-picker-label',
         'viz-picker',
+        'section-practice-pill',
     ];
 
     function setRedundantControlsHidden(hide) {
@@ -2852,61 +2852,6 @@
             const el = document.getElementById(id);
             if (el) el.style.display = hide ? 'none' : '';
         }
-    }
-
-    // Practice is global playback control. In split mode it should stay in the
-    // general controls bar (not floating over panel canvases).
-    let practiceBtnOriginalParent = null;
-    let practiceBtnOriginalNextSibling = null;
-    let practiceBtnOriginalStyle = null;
-
-    function relocatePracticeButton() {
-        const btn = document.getElementById('btn-practice');
-        const controls = document.getElementById('player-controls');
-        if (!btn || !controls) return;
-
-        if (!practiceBtnOriginalParent) {
-            practiceBtnOriginalParent = btn.parentNode;
-            practiceBtnOriginalNextSibling = btn.nextSibling;
-            practiceBtnOriginalStyle = btn.getAttribute('style');
-        }
-
-        if (btn.parentNode !== controls) {
-            const separator = document.getElementById('player-controls-separator') || controls.querySelector('span.text-gray-700');
-            if (separator) controls.insertBefore(btn, separator);
-            else controls.appendChild(btn);
-        }
-
-        btn.style.position = 'static';
-        btn.style.left = '';
-        btn.style.right = '';
-        btn.style.top = '';
-        btn.style.bottom = '';
-        btn.style.zIndex = '';
-        btn.style.margin = '0';
-        btn.style.pointerEvents = '';
-        btn.style.display = '';
-    }
-
-    function restorePracticeButton() {
-        const btn = document.getElementById('btn-practice');
-        if (!btn) return;
-        if (!practiceBtnOriginalParent) return;
-
-        if (practiceBtnOriginalParent.isConnected) {
-            if (practiceBtnOriginalNextSibling && practiceBtnOriginalNextSibling.parentNode === practiceBtnOriginalParent) {
-                practiceBtnOriginalParent.insertBefore(btn, practiceBtnOriginalNextSibling);
-            } else {
-                practiceBtnOriginalParent.appendChild(btn);
-            }
-        }
-
-        if (practiceBtnOriginalStyle === null) btn.removeAttribute('style');
-        else btn.setAttribute('style', practiceBtnOriginalStyle);
-
-        practiceBtnOriginalParent = null;
-        practiceBtnOriginalNextSibling = null;
-        practiceBtnOriginalStyle = null;
     }
 
     // ── Dock all pop-outs ──
