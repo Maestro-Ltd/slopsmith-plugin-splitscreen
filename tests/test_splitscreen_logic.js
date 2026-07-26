@@ -234,8 +234,8 @@ test('does not mutate original prefs', () => {
 const LAYOUTS = {
     'top-bottom': { panels: 2, cols: 1, rows: 2, style: 'flex-col' },
     'left-right': { panels: 2, cols: 2, rows: 1, style: 'flex-row' },
-    'triple':     { panels: 3, cols: 3, rows: 1, style: 'flex-row' },
-    'triple-t':   { panels: 3, cols: 1, rows: 3, style: 'flex-col' },
+    'triple':     { panels: 3, cols: 3, rows: 1, style: 'grid'     },
+    'triple-t':   { panels: 3, cols: 1, rows: 3, style: 'grid'     },
     'quad':       { panels: 4, cols: 2, rows: 2, style: 'grid'     },
     'five':       { panels: 5, cols: 3, rows: 2, style: 'grid-3x2' },
     'six':        { panels: 6, cols: 3, rows: 2, style: 'grid'     },
@@ -251,10 +251,11 @@ function _panelGridPlacement(index, cfg) {
         };
     }
     if (cfg.style === 'grid-3x2') {
-        // Explicit start line + span prevents CSS auto-placement, which is
-        // unreliable for mixed-span rows in older/embedded WebViews (KNOWN_ISSUES #8).
+        // Explicit start/end column lines (no `span` keyword) prevent CSS
+        // auto-placement AND avoid the `span` keyword, which some older/embedded
+        // WebViews (e.g. JUCE) fail to parse correctly (KNOWN_ISSUES #8).
         // Grid is 6 cols: top 2 panels each occupy 3 cols; bottom 3 each occupy 2 cols.
-        const gridColumns = ['1 / span 3', '4 / span 3', '1 / span 2', '3 / span 2', '5 / span 2'];
+        const gridColumns = ['1 / 4', '4 / 7', '1 / 3', '3 / 5', '5 / 7'];
         return {
             gridRow:    index < 2 ? '1' : '2',
             gridColumn: gridColumns[index],
@@ -267,34 +268,34 @@ function _panelGridPlacement(index, cfg) {
 
 console.log('\n_panelGridPlacement — "five" layout (grid-3x2, KNOWN_ISSUES #8)');
 
-test('five: panel 0 (top-left) → row 1, col 1 / span 3', () => {
+test('five: panel 0 (top-left) → row 1, col 1 / 4', () => {
     const p = _panelGridPlacement(0, LAYOUTS['five']);
     assert.equal(p.gridRow, '1');
-    assert.equal(p.gridColumn, '1 / span 3');
+    assert.equal(p.gridColumn, '1 / 4');
 });
 
-test('five: panel 1 (top-right) → row 1, col 4 / span 3', () => {
+test('five: panel 1 (top-right) → row 1, col 4 / 7', () => {
     const p = _panelGridPlacement(1, LAYOUTS['five']);
     assert.equal(p.gridRow, '1');
-    assert.equal(p.gridColumn, '4 / span 3');
+    assert.equal(p.gridColumn, '4 / 7');
 });
 
-test('five: panel 2 (bottom-left) → row 2, col 1 / span 2', () => {
+test('five: panel 2 (bottom-left) → row 2, col 1 / 3', () => {
     const p = _panelGridPlacement(2, LAYOUTS['five']);
     assert.equal(p.gridRow, '2');
-    assert.equal(p.gridColumn, '1 / span 2');
+    assert.equal(p.gridColumn, '1 / 3');
 });
 
-test('five: panel 3 (bottom-middle) → row 2, col 3 / span 2', () => {
+test('five: panel 3 (bottom-middle) → row 2, col 3 / 5', () => {
     const p = _panelGridPlacement(3, LAYOUTS['five']);
     assert.equal(p.gridRow, '2');
-    assert.equal(p.gridColumn, '3 / span 2');
+    assert.equal(p.gridColumn, '3 / 5');
 });
 
-test('five: panel 4 (bottom-right) → row 2, col 5 / span 2', () => {
+test('five: panel 4 (bottom-right) → row 2, col 5 / 7', () => {
     const p = _panelGridPlacement(4, LAYOUTS['five']);
     assert.equal(p.gridRow, '2');
-    assert.equal(p.gridColumn, '5 / span 2');
+    assert.equal(p.gridColumn, '5 / 7');
 });
 
 // ── 'quad' (grid 2×2) ─────────────────────────────────────────────────────────
@@ -349,6 +350,102 @@ test('six: bottom row panels → row 2', () => {
     }
 });
 
+console.log('\n_panelGridPlacement — "triple" layout (grid 3×1)');
+
+test('triple: panel 0 → row 1, col 1', () => {
+    assert.deepEqual(
+        _panelGridPlacement(0, LAYOUTS['triple']),
+        { gridRow: '1', gridColumn: '1' },
+    );
+});
+
+test('triple: panel 1 → row 1, col 2', () => {
+    assert.deepEqual(
+        _panelGridPlacement(1, LAYOUTS['triple']),
+        { gridRow: '1', gridColumn: '2' },
+    );
+});
+
+test('triple: panel 2 → row 1, col 3', () => {
+    assert.deepEqual(
+        _panelGridPlacement(2, LAYOUTS['triple']),
+        { gridRow: '1', gridColumn: '3' },
+    );
+});
+
+console.log('\n_panelGridPlacement — "triple-t" layout (grid 1×3)');
+
+test('triple-t: panel 0 → row 1, col 1', () => {
+    assert.deepEqual(
+        _panelGridPlacement(0, LAYOUTS['triple-t']),
+        { gridRow: '1', gridColumn: '1' },
+    );
+});
+
+test('triple-t: panel 1 → row 2, col 1', () => {
+    assert.deepEqual(
+        _panelGridPlacement(1, LAYOUTS['triple-t']),
+        { gridRow: '2', gridColumn: '1' },
+    );
+});
+
+test('triple-t: panel 2 → row 3, col 1', () => {
+    assert.deepEqual(
+        _panelGridPlacement(2, LAYOUTS['triple-t']),
+        { gridRow: '3', gridColumn: '1' },
+    );
+});
+
+console.log('\n_panelGridPlacement — "triple"/"triple-t" grid migration (regression)');
+
+test('triple: LAYOUTS config uses "grid" style (no longer "flex-row")', () => {
+    assert.equal(LAYOUTS['triple'].style, 'grid');
+    assert.notEqual(LAYOUTS['triple'].style, 'flex-row');
+});
+
+test('triple-t: LAYOUTS config uses "grid" style (no longer "flex-col")', () => {
+    assert.equal(LAYOUTS['triple-t'].style, 'grid');
+    assert.notEqual(LAYOUTS['triple-t'].style, 'flex-col');
+});
+
+test('triple: all 3 panels get distinct, non-overlapping placements', () => {
+    const placements = [0, 1, 2].map(i => _panelGridPlacement(i, LAYOUTS['triple']));
+    const keys = placements.map(p => `${p.gridRow}/${p.gridColumn}`);
+    assert.equal(new Set(keys).size, 3, 'each panel must occupy a unique grid cell');
+});
+
+test('triple-t: all 3 panels get distinct, non-overlapping placements', () => {
+    const placements = [0, 1, 2].map(i => _panelGridPlacement(i, LAYOUTS['triple-t']));
+    const keys = placements.map(p => `${p.gridRow}/${p.gridColumn}`);
+    assert.equal(new Set(keys).size, 3, 'each panel must occupy a unique grid cell');
+});
+
+console.log('\n_panelGridPlacement — "five" grid-3x2 (regression: no `span` keyword)');
+
+test('five: no gridColumn value uses the `span` keyword (JUCE WebView parser compat)', () => {
+    for (let i = 0; i < 5; i++) {
+        const p = _panelGridPlacement(i, LAYOUTS['five']);
+        assert.ok(!p.gridColumn.includes('span'), `panel ${i} gridColumn "${p.gridColumn}" must not use 'span'`);
+    }
+});
+
+test('five: gridColumn values use explicit "start / end" line syntax', () => {
+    const expected = ['1 / 4', '4 / 7', '1 / 3', '3 / 5', '5 / 7'];
+    for (let i = 0; i < 5; i++) {
+        const p = _panelGridPlacement(i, LAYOUTS['five']);
+        assert.equal(p.gridColumn, expected[i]);
+        assert.match(p.gridColumn, /^\d+ \/ \d+$/, 'must be "N / M" with no other tokens');
+    }
+});
+
+test('five: out-of-range panel index (boundary) yields undefined gridColumn', () => {
+    // Only 5 entries (indices 0-4) exist in the gridColumns lookup table;
+    // an out-of-bounds index documents current (unguarded) behavior.
+    const p = _panelGridPlacement(5, LAYOUTS['five']);
+    assert.equal(p.gridRow, '2');
+    assert.equal(p.gridColumn, undefined);
+});
+
 // ── flex layouts return null ───────────────────────────────────────────────────
 
 console.log('\n_panelGridPlacement — flex layouts return null');
@@ -359,14 +456,6 @@ test('top-bottom: flex layout → null (no grid placement)', () => {
 
 test('left-right: flex layout → null (no grid placement)', () => {
     assert.equal(_panelGridPlacement(0, LAYOUTS['left-right']), null);
-});
-
-test('triple: flex layout → null (no grid placement)', () => {
-    assert.equal(_panelGridPlacement(0, LAYOUTS['triple']), null);
-});
-
-test('triple-t: flex layout → null (no grid placement)', () => {
-    assert.equal(_panelGridPlacement(0, LAYOUTS['triple-t']), null);
 });
 
 // ── Summary ──────────────────────────────────────────────────────────────────
