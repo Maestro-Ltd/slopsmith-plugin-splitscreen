@@ -1,0 +1,2 @@
+# Keep shell scripts LF for Bash compatibility on Windows and Unix
+*.sh text eol=lf
