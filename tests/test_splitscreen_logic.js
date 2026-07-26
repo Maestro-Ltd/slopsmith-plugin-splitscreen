@@ -408,6 +408,94 @@ test('left-right: flex layout → null (no grid placement)', () => {
     assert.equal(_panelGridPlacement(0, LAYOUTS['left-right']), null);
 });
 
+// ── REDUNDANT_CONTROL_IDS ────────────────────────────────────────────────────
+//
+// Verifies that specific element IDs are present in REDUNDANT_CONTROL_IDS in
+// screen.js (the list of core controls hidden while split-screen is active).
+//
+// screen.js is an IIFE so its exports can't be required directly.  We instead
+// read the source file and check for the literal string values, which is
+// robust enough: the constant is a simple string-array literal and the names
+// are stable identifiers that won't appear incidentally elsewhere in the file.
+//
+// btn-practice must be present: the core Practice button is positioned over
+// the split-screen wrap (z-index:3) with a higher z-index, intercepting
+// pointer events on panel control bars across all layouts — most visibly
+// blocking the bottom panel row entirely (issue #22).
+
+const fs   = require('fs');
+const path = require('path');
+const screenSrc = fs.readFileSync(path.join(__dirname, '..', 'screen.js'), 'utf8');
+
+console.log('\nREDUNDANT_CONTROL_IDS (checked against screen.js source)');
+
+test('screen.js REDUNDANT_CONTROL_IDS includes btn-practice (issue #22)', () => {
+    assert.ok(
+        screenSrc.includes("'btn-practice'"),
+        "btn-practice must appear in screen.js's REDUNDANT_CONTROL_IDS so the " +
+        'core Practice button is hidden while split is active and cannot ' +
+        'intercept pointer events on panel control bars',
+    );
+});
+
+test('screen.js REDUNDANT_CONTROL_IDS includes all legacy core controls', () => {
+    const required = [
+        'arr-select', 'mastery-slider-label', 'mastery-slider', 'mastery-label',
+        'btn-lyrics', 'viz-picker-label', 'viz-picker', 'btn-practice',
+    ];
+    for (const id of required) {
+        assert.ok(screenSrc.includes("'" + id + "'"), "screen.js is missing '" + id + "' in REDUNDANT_CONTROL_IDS");
+    }
+});
+
+// Extracts and parses the REDUNDANT_CONTROL_IDS array literal itself (rather
+// than just substring-checking the whole file) so ordering, exact membership,
+// and duplicate entries are all verified precisely.
+function _extractRedundantControlIds(src) {
+    const match = src.match(/const REDUNDANT_CONTROL_IDS = \[([\s\S]*?)\];/);
+    assert.ok(match, 'could not find REDUNDANT_CONTROL_IDS array literal in screen.js');
+    return match[1].match(/'[^']*'/g).map(s => s.slice(1, -1));
+}
+
+test('REDUNDANT_CONTROL_IDS parses to exactly the expected ordered list', () => {
+    const ids = _extractRedundantControlIds(screenSrc);
+    assert.deepEqual(ids, [
+        'arr-select',
+        'mastery-slider-label',
+        'mastery-slider',
+        'mastery-label',
+        'btn-lyrics',
+        'viz-picker-label',
+        'viz-picker',
+        'btn-practice',
+    ]);
+});
+
+test('btn-practice appears exactly once in REDUNDANT_CONTROL_IDS (no duplicate entries)', () => {
+    const ids = _extractRedundantControlIds(screenSrc);
+    const occurrences = ids.filter(id => id === 'btn-practice').length;
+    assert.equal(occurrences, 1, 'btn-practice should appear exactly once, not zero or duplicated');
+});
+
+test('btn-practice is appended after the pre-existing legacy IDs (order preserved)', () => {
+    const ids = _extractRedundantControlIds(screenSrc);
+    assert.equal(ids[ids.length - 1], 'btn-practice', 'btn-practice should be the last entry');
+    assert.deepEqual(
+        ids.slice(0, -1),
+        ['arr-select', 'mastery-slider-label', 'mastery-slider', 'mastery-label',
+            'btn-lyrics', 'viz-picker-label', 'viz-picker'],
+        'pre-existing legacy IDs must remain untouched ahead of btn-practice',
+    );
+});
+
+test('screen.js documents the rationale for hiding btn-practice while split is active', () => {
+    assert.match(
+        screenSrc,
+        /btn-practice is also hidden: the core's Practice button is positioned[\s\S]{0,200}over the split-screen wrap/,
+        'expected explanatory comment above REDUNDANT_CONTROL_IDS documenting why btn-practice is hidden (issue #22)',
+    );
+});
+
 // ── Summary ──────────────────────────────────────────────────────────────────
 
 console.log(`\n${_passed} passed, ${_failed} failed\n`);
