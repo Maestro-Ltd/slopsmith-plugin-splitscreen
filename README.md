@@ -1,5 +1,7 @@
 # Slopsmith Plugin: Split Screen
 
+> **The official Slopsmith project is no longer maintained.** [feedBack](https://github.com/got-feedBack/feedBack) is its successor — see [feedBack-plugin-splitscreen](https://github.com/got-feedBack/feedBack-plugin-splitscreen) for the actively maintained version of this plugin.
+
 A plugin for [Slopsmith](https://github.com/carochacs/slopsmith) that shows 2–6 highway panels side-by-side during playback, each rendering a different arrangement of the same song. Practice lead and rhythm at once, watch bass against lead, or run a quad view of every arrangement a song has.
 
 ## Quick Start
