@@ -573,9 +573,18 @@
     }
 
     // ── Helpers ──
+    // `arrangement` here is a position in the local `arrangements` array
+    // (server-sorted smart-name order). The server's `?arrangement=` query
+    // param, however, indexes into song.arrangements in its *original,
+    // unsorted* storage order — each entry's `.index` field carries that
+    // true index. Translate position -> true index here so every caller
+    // can keep working in local-array-position terms.
     function getWsUrl(filename, arrangement) {
         const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const arrParam = arrangement !== undefined ? `?arrangement=${arrangement}` : '';
+        const serverIndex = arrangement !== undefined
+            ? (arrangements[arrangement]?.index ?? arrangement)
+            : undefined;
+        const arrParam = serverIndex !== undefined ? `?arrangement=${serverIndex}` : '';
         return `${proto}//${location.host}/ws/highway/${filename}${arrParam}`;
     }
 
@@ -1968,9 +1977,10 @@
         panel.tabBtn.disabled = true;
         try {
             const decoded = decodeURIComponent(currentFilename);
+            const serverIndex = arrangements[panel.arrIndex]?.index ?? panel.arrIndex;
             const url = '/api/plugins/tabview/gp5/' +
                 encodeURIComponent(decoded) +
-                '?arrangement=' + panel.arrIndex;
+                '?arrangement=' + serverIndex;
             const resp = await fetch(url);
             if (!resp.ok) throw new Error(await resp.text());
             const data = await resp.arrayBuffer();

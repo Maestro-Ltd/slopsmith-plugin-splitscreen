@@ -1,5 +1,7 @@
 # Split Screen Plugin — AI Agent Guide
 
+> **Note:** The official Slopsmith project is no longer maintained. [feedBack](https://github.com/got-feedBack/feedBack) (`got-feedBack`) is its successor.
+
 All logic lives in a single IIFE in `screen.js`. There is no build step, no bundler, no imports. The plugin is loaded as a plain `<script>` tag by slopsmith core, which means every global it needs (`highway`, `createHighway`, `window.playSong`, `window.showScreen`) must already be on `window` when the script executes.
 
 ## Module structure
